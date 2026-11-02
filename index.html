@@ -282,20 +282,81 @@
         let peerConn = null;
         let connectionTimer = null;
 
-        // Multi-STUN ICE Server configuration for cross-network NAT Traversal
+        // Multi-STUN + TURN Server Configuration for Robust NAT/LTE Traversal
         const PEER_CONFIG = {
             config: {
                 iceServers: [
+                    // Free Metered TURN Servers (Bypasses Symmetric NAT & LTE Barriers)
+                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' },
+                    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelay', credential: 'openrelay' },
+                    { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelay', credential: 'openrelay' },
+                    // Google Public STUN Servers
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
                     { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' },
-                    { urls: 'stun:global.stun.twilio.com:3478' }
-                ]
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ],
+                iceCandidatePoolSize: 10
             },
             debug: 1
         };
+
+        // Web Audio Synthesizer (Zero External Sound File Dependencies)
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playStoneSound(isBlack = true) {
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(isBlack ? 320 : 440, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.08);
+
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start();
+                osc.stop(ctx.currentTime + 0.08);
+            } catch (e) {}
+        }
+
+        function playWinSound() {
+            try {
+                const ctx = getAudioContext();
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    
+                    const startTime = ctx.currentTime + idx * 0.1;
+                    gain.gain.setValueAtTime(0.2, startTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.3);
+                });
+            } catch (e) {}
+        }
 
         // STEALTH SECRET HELPER STATE (Strictly Local)
         let isSecretHelperActive = false;
@@ -338,14 +399,14 @@
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             const bgClass = type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-amber-600';
-            toast.className = `${bgClass} text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 transform translate-y-2 flex items-center gap-2`;
+            toast.className = `${bgClass} text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 transform translate-y-2 flex items-center gap-2 pointer-events-auto`;
             toast.innerText = msg;
             container.appendChild(toast);
             setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
             setTimeout(() => {
                 toast.classList.add('opacity-0');
                 setTimeout(() => toast.remove(), 300);
-            }, 2500);
+            }, 3000);
         };
 
         // Canvas Setup (High DPI resolution scaling with zero distortion)
@@ -497,6 +558,8 @@
                 board[row][col] = movePlayer;
                 lastMove = { r: row, c: col };
 
+                playStoneSound(movePlayer === 1);
+
                 const isWin = checkFiveInARow(row, col, movePlayer);
                 const nextTurn = currentTurn === 1 ? 2 : 1;
                 currentTurn = isWin ? currentTurn : nextTurn;
@@ -506,6 +569,7 @@
                 updateUIHeader();
 
                 if (isWin) {
+                    playWinSound();
                     const winnerName = movePlayer === 1 ? hostName : guestName;
                     showToast(`🎉 ${winnerName} 승리!`, "success");
                 }
@@ -718,7 +782,7 @@
         }
 
         // ====================================================
-        // WebRTC P2P Multiplayer System (NAT Traversal Fix)
+        // WebRTC P2P Multiplayer System (TURN/STUN & Handshake Fix)
         // ====================================================
         window.openLobbyModal = function() {
             document.getElementById('lobbyModal').classList.remove('hidden');
@@ -733,12 +797,12 @@
         function startConnectionTimeout(errorMsg) {
             clearConnectionTimeout();
             connectionTimer = setTimeout(() => {
-                showToast(errorMsg || "네트워크 통신 시간에 지연이 발생했습니다. 다시 시도해 주세요.", "error");
+                showToast(errorMsg || "네트워크 연결 시간이 초과되었습니다. 다른 방 코드로 다시 시도해 주세요.", "error");
                 const createBtn = document.getElementById('createRoomBtn');
                 const joinBtn = document.getElementById('joinRoomBtn');
                 if (createBtn) { createBtn.disabled = false; createBtn.innerHTML = "<span>➕</span> 새로운 1:1 방 만들기"; }
                 if (joinBtn) { joinBtn.disabled = false; joinBtn.innerText = "입장하기"; }
-            }, 12000); // 12-second connection timeout safeguard
+            }, 8000); // 8-second WebRTC ICE connection timeout
         }
 
         function clearConnectionTimeout() {
@@ -756,9 +820,9 @@
             resetPeer();
             const nick = getPlayerNickname('방장');
             const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const hostPeerId = `omok-v2-room-${roomCode.toLowerCase()}`;
+            const hostPeerId = `omok-v3-room-${roomCode.toLowerCase()}`;
 
-            startConnectionTimeout("방 생성 중 네트워크 연결에 지연이 생겼습니다.");
+            startConnectionTimeout("방 생성 시 네트워크 연결에 지연이 생겼습니다.");
 
             peer = new Peer(hostPeerId, PEER_CONFIG);
 
@@ -792,9 +856,9 @@
             });
 
             peer.on('error', (err) => {
-                console.error("PeerJS Error:", err);
+                console.error("PeerJS Host Error:", err);
                 clearConnectionTimeout();
-                showToast("네트워크 방 생성 실패: " + (err.type || "연결 오류"), "error");
+                showToast("방 생성 중 신호 서버 오류 발생: " + (err.type || "연결 불가"), "error");
                 createBtn.disabled = false;
                 createBtn.innerHTML = "<span>➕</span> 새로운 1:1 방 만들기";
             });
@@ -812,11 +876,11 @@
 
             resetPeer();
             const nick = getPlayerNickname('도전자');
-            const targetPeerId = `omok-v2-room-${roomCode.toLowerCase()}`;
+            const targetPeerId = `omok-v3-room-${roomCode.toLowerCase()}`;
 
-            startConnectionTimeout("네트워크 통신 시간에 지연이 발생했습니다. 다시 시도해 주세요.");
+            startConnectionTimeout("상대방과 P2P 연결 중 지연이 생겼습니다.");
 
-            peer = new Peer(PEER_CONFIG); // Auto generated guest ID
+            peer = new Peer(PEER_CONFIG); // Auto-generated guest peer ID
 
             peer.on('open', () => {
                 // Connect only AFTER Guest peer is successfully registered on PeerServer
@@ -832,7 +896,7 @@
             peer.on('error', (err) => {
                 console.error("PeerJS Join Error:", err);
                 clearConnectionTimeout();
-                showToast("방에 입장할 수 없습니다. 방 코드를 확인해 주세요.", "error");
+                showToast("방에 입장할 수 없습니다. 방 코드가 맞는지 확인해 주세요.", "error");
                 joinBtn.disabled = false;
                 joinBtn.innerText = "입장하기";
             });
@@ -841,7 +905,7 @@
         function setupConnectionListeners() {
             if (!peerConn) return;
 
-            // Immediately send bidirectional HANDSHAKE signal when channel opens
+            // Immediately send bidirectional HANDSHAKE signal when WebRTC data channel opens
             peerConn.on('open', () => {
                 clearConnectionTimeout();
                 const joinBtn = document.getElementById('joinRoomBtn');
@@ -865,9 +929,9 @@
                         gameStatus = "playing";
                         document.getElementById('playerWhiteName').innerText = guestName;
                         
-                        // Host sends complete game state back to Guest
+                        // Host sends complete game state and ACK back to Guest
                         peerConn.send({
-                            type: 'SYNC',
+                            type: 'HANDSHAKE_ACK',
                             hostName,
                             guestName,
                             board,
@@ -876,16 +940,14 @@
                             gameStatus
                         });
                         showToast(`${guestName} 님이 대국실에 입장하셨습니다!`, "success");
-                    } else { // Guest
-                        document.getElementById('currentRoomCode').innerText = currentRoomId;
-                        document.getElementById('playerWhiteName').innerText = `${guestName} (나)`;
-                        document.getElementById('chatConnectionBadge').innerText = "WebRTC (참가자)";
-                        showToast("대국실에 성공적으로 연결되었습니다!", "success");
                     }
                     updateUIHeader();
                     renderBoard();
                 }
-                else if (data.type === 'SYNC') {
+                else if (data.type === 'HANDSHAKE_ACK') {
+                    clearConnectionTimeout();
+                    document.getElementById('lobbyModal').classList.add('hidden');
+                    
                     hostName = data.hostName;
                     guestName = data.guestName;
                     board = data.board;
@@ -895,6 +957,10 @@
 
                     document.getElementById('playerBlackName').innerText = hostName;
                     document.getElementById('playerWhiteName').innerText = `${guestName} (나)`;
+                    document.getElementById('currentRoomCode').innerText = currentRoomId;
+                    document.getElementById('chatConnectionBadge').innerText = "WebRTC (연결 완료)";
+                    
+                    showToast("대국실에 성공적으로 연결되었습니다!", "success");
                     updateUIHeader();
                     renderBoard();
                     if (isSecretHelperActive) runAiAnalysis();
@@ -904,8 +970,11 @@
                     lastMove = { r: data.row, c: data.col };
                     currentTurn = data.nextTurn;
 
+                    playStoneSound(data.movePlayer === 1);
+
                     if (data.isWin) {
                         gameStatus = "finished";
+                        playWinSound();
                         const winnerName = data.movePlayer === 1 ? hostName : guestName;
                         showToast(`🏆 대국 종료! ${winnerName} 승리!`, "success");
                     }
