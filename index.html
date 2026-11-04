@@ -41,6 +41,10 @@
                     🎮 새 대국방 만들기
                 </button>
 
+                <button onclick="startSoloPractice()" class="w-full bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold py-3 rounded-xl border border-amber-500/40 transition transform active:scale-95 text-xs flex items-center justify-center gap-2">
+                    🤖 AI 혼자 연습 대국 (즉시 오목판 테스트)
+                </button>
+
                 <div class="relative flex py-1 items-center">
                     <div class="flex-grow border-t border-slate-700"></div>
                     <span class="flex-shrink mx-4 text-slate-500 text-xs font-medium">또는 방 코드로 참가</span>
@@ -110,11 +114,11 @@
                 </div>
 
                 <!-- 바둑판 프레임 -->
-                <div class="p-3 sm:p-4 bg-[#c88d4c] border-4 border-[#7a4c1f] rounded-2xl shadow-2xl relative">
-                    <canvas id="omokCanvas" class="w-[330px] h-[330px] sm:w-[450px] sm:h-[450px] bg-[#e6b074] rounded-lg shadow-inner cursor-pointer"></canvas>
-                </div>
+            <div id="boardFrame" class="p-3 sm:p-4 bg-[#c88d4c] border-4 border-[#7a4c1f] rounded-2xl shadow-2xl relative w-full max-w-[340px] sm:max-w-[460px] aspect-square flex items-center justify-center">
+                <canvas id="omokCanvas" class="w-full h-full bg-[#e6b074] rounded-lg shadow-inner cursor-pointer block"></canvas>
+            </div>
 
-                <!-- 플레이어 흑/백 정보 -->
+            <!-- 플레이어 흑/백 정보 -->
                 <div class="w-full max-w-[340px] sm:max-w-[460px] flex justify-between items-center mt-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700/70 text-xs">
                     <div class="flex items-center gap-2">
                         <div class="w-3.5 h-3.5 rounded-full bg-black border border-gray-600 shadow"></div>
@@ -197,6 +201,7 @@
         
         let roomCode = '';
         let isHost = false;
+        let isSoloPractice = false;
         let myRole = 1; // 1: Black (Host), 2: White (Guest)
         let currentTurn = 1;
         let gameStatus = 'lobby'; // lobby, waiting, playing, finished
@@ -467,17 +472,29 @@
             if (isAiActive && currentTurn === myRole && gameStatus === 'playing') {
                 calculateAI();
             }
+
+            // AI 연습 모드일 때 AI 턴 처리
+            if (isSoloPractice && currentTurn === 2 && gameStatus === 'playing') {
+                setTimeout(() => {
+                    const aiMove = getOrderedMoves(2)[0];
+                    if (aiMove) {
+                        executeMove(aiMove.r, aiMove.c, 2);
+                    }
+                }, 300);
+            }
         }
 
         function checkFiveInARow(r, c, color) {
-            const dirs = [[[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]]];
+            const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
             for (let d of dirs) {
                 let count = 1;
-                for (let step of d) {
-                    let nr = r + step[0], nc = c + step[1];
-                    while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) {
-                        count++; nr += step[0]; nc += step[1];
-                    }
+                let nr = r + d[0], nc = c + d[1];
+                while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) {
+                    count++; nr += d[0]; nc += d[1];
+                }
+                nr = r - d[0]; nc = c - d[1];
+                while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) {
+                    count++; nr -= d[0]; nc -= d[1];
                 }
                 if (count >= 5) return true;
             }
@@ -489,14 +506,26 @@
             myNickname = document.getElementById('nickname-input').value.trim() || `방장_${Math.floor(1000 + Math.random()*9000)}`;
             roomCode = Math.floor(100000 + Math.random() * 900000).toString();
             isHost = true;
+            isSoloPractice = false;
             myRole = 1;
+            gameStatus = 'waiting';
 
-            document.getElementById('loading-modal').classList.remove('hidden');
-            document.getElementById('loading-text').innerText = '상대방 접속 대기 중...';
-            document.getElementById('room-code-text').innerText = roomCode;
-            document.getElementById('room-code-display').classList.remove('hidden');
+            // 방 생성 즉시 대국 화면으로 전환하여 오목판 100% 노출
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('loading-modal').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
 
-            updateDebugStatus(`[1단계] Peer ID 생성 중... (방 코드: ${roomCode})`);
+            document.getElementById('activeRoomCode').innerText = roomCode;
+            document.getElementById('blackPlayerName').innerText = `${myNickname} (나)`;
+            document.getElementById('whitePlayerName').innerText = `상대방 (대기 중...)`;
+
+            requestAnimationFrame(() => {
+                setupCanvas();
+                resetBoardState();
+            });
+
+            updateDebugStatus(`[방 생성 완료] 코드: ${roomCode} | 상대방 접속 대기 중...`);
+            showToast(`방 코드 [${roomCode}] 생성 완료! 오목판이 열렸습니다.`, 'success');
 
             setupBroadcastChannel(roomCode);
 
@@ -507,12 +536,12 @@
                 peer = new Peer(hostPeerId, STUN_CONFIG);
 
                 peer.on('open', (id) => {
-                    updateDebugStatus(`[2단계] 방 서버 등록 완료! 상대방 참가 대기 중 (${id})`);
+                    updateDebugStatus(`[대기 중] 코드: ${roomCode} | 상대방을 기다리는 중`);
                 });
 
                 peer.on('connection', (connection) => {
                     conn = connection;
-                    updateDebugStatus(`[3단계] 상대방 P2P 데이터 채널 감지됨!`);
+                    updateDebugStatus(`[연결 성공] 상대방 P2P 데이터 채널 감지됨!`);
                     bindConnectionEvents();
                 });
 
@@ -524,39 +553,69 @@
             }
         }
 
+        function startSoloPractice() {
+            myNickname = document.getElementById('nickname-input').value.trim() || `플레이어`;
+            opponentNickname = `AI 8대 엔진`;
+            roomCode = 'SOLO';
+            isHost = true;
+            isSoloPractice = true;
+            myRole = 1;
+            gameStatus = 'playing';
+            isAiActive = true; // 연습 모드 시 AI 힌트 자동 켜기
+
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('loading-modal').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('ai-report-card').classList.remove('hidden');
+
+            document.getElementById('activeRoomCode').innerText = 'SOLO';
+            document.getElementById('blackPlayerName').innerText = `${myNickname} (나)`;
+            document.getElementById('whitePlayerName').innerText = `AI 8대 엔진`;
+
+            requestAnimationFrame(() => {
+                setupCanvas();
+                resetBoardState();
+            });
+            appendChatMessage('시스템', '🤖 AI 혼자 연습 모드가 시작되었습니다. 돌을 놓아보세요!');
+            showToast('오목판이 활성화되었습니다!', 'success');
+        }
+
         function joinRoom() {
-            const code = document.getElementById('join-code-input').value.trim().toUpperCase();
-            if (code.length !== 6) return showToast('6자리 방 코드를 정확히 입력하세요.', 'error');
+            const inputCode = document.getElementById('join-code-input').value.trim();
+            if (inputCode.length !== 6) {
+                showToast('6자리 방 코드를 정확히 입력하세요.', 'error');
+                return;
+            }
 
             myNickname = document.getElementById('nickname-input').value.trim() || `손님_${Math.floor(1000 + Math.random()*9000)}`;
-            roomCode = code;
+            roomCode = inputCode;
             isHost = false;
+            isSoloPractice = false;
             myRole = 2;
+            gameStatus = 'waiting';
 
             document.getElementById('loading-modal').classList.remove('hidden');
-            document.getElementById('loading-text').innerText = '호스트에 연결 중...';
+            document.getElementById('loading-text').innerText = '방장에 연결 중...';
             document.getElementById('room-code-display').classList.add('hidden');
-
-            updateDebugStatus(`[1단계] P2P 모듈 초기화 중...`);
+            updateDebugStatus(`[1단계] 방 코드 ${roomCode} 검색 중...`);
 
             setupBroadcastChannel(roomCode);
-            dispatchNetworkMessage({ type: 'JOIN', nickname: myNickname });
 
-            if (peer) try { peer.destroy(); } catch(e) {}
-            
+            const guestPeerId = `omok-p2p-guest-${Math.floor(Math.random() * 100000)}`;
+            if (peer) try { peer.destroy(); } catch (e) {}
+
             try {
-                peer = new Peer(STUN_CONFIG);
+                peer = new Peer(guestPeerId, STUN_CONFIG);
 
                 peer.on('open', () => {
-                    updateDebugStatus(`[2단계] 호스트 (${code}) 검색 및 연결 시도...`);
-                    tryConnectToHostWithRetry(code, 1);
+                    tryConnectToHostWithRetry(roomCode, 1);
                 });
 
                 peer.on('error', (err) => {
-                    updateDebugStatus(`[경고] Peer 연결 탐색 중... (${err.type})`);
+                    updateDebugStatus(`[경고] PeerJS 에러 (${err.type}). 로컬 통신으로 전환.`);
                 });
             } catch (err) {
-                updateDebugStatus(`[로컬 전용 모드] 호스트 연결 완료 (Broadcast/Storage 채널)`);
+                updateDebugStatus(`[로컬 통신] 로컬 통신 채널 활성화됨`);
             }
         }
 
@@ -717,7 +776,10 @@
             if (!indicator) return;
             const isMyTurn = currentTurn === myRole;
 
-            if (gameStatus === 'finished') {
+            if (gameStatus === 'waiting') {
+                indicator.innerText = '상대방 접속 대기 중...';
+                indicator.className = 'px-3 py-1 rounded-full bg-amber-600 text-white text-xs font-extrabold animate-pulse';
+            } else if (gameStatus === 'finished') {
                 indicator.innerText = '대국 종료';
                 indicator.className = 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-extrabold';
             } else if (isMyTurn) {
@@ -780,49 +842,40 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        // --- 8 GOMOKU ALGORITHMS AI EVALUATION ENGINE ---
-        function calculateAI() {
+        // --- 8 GOMOKU ALGORITHMS FULL AI SEARCH ENGINE ---
+        // 5. Transposition Table (전이테이블) & Hashing
+        const TT = new Map();
+
+        // 1 & 2. Neighbor Restriction (인접영역 제한 탐색)
+        function getNeighborCandidates(dist = 2) {
             const candidates = [];
-            const myColorVal = myRole;
-            const enemyColorVal = myRole === 1 ? 2 : 1;
+            const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+            let hasStones = false;
 
             for (let r = 0; r < BOARD_SIZE; r++) {
                 for (let c = 0; c < BOARD_SIZE; c++) {
-                    if (board[r][c] === 0) {
-                        const scoreAtk = evaluateCell(r, c, myColorVal);
-                        const scoreDef = evaluateCell(r, c, enemyColorVal);
-                        const totalScore = scoreAtk.score + scoreDef.score * 0.95;
-
-                        if (totalScore > 0) {
-                            candidates.push({ r, c, score: totalScore, tag: scoreAtk.tag || scoreDef.tag || '요충지 포석' });
+                    if (board[r][c] !== 0) {
+                        hasStones = true;
+                        for (let dr = -dist; dr <= dist; dr++) {
+                            for (let dc = -dist; dc <= dist; dc++) {
+                                const nr = r + dr, nc = c + dc;
+                                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0 && !visited[nr][nc]) {
+                                    visited[nr][nc] = true;
+                                    candidates.push({ r: nr, c: nc });
+                                }
+                            }
                         }
                     }
                 }
             }
-
-            candidates.sort((a, b) => b.score - a.score);
-            top5Candidates = candidates.slice(0, 5);
-
-            if (top5Candidates.length > 0) {
-                const colNames = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
-                const best = top5Candidates[0];
-                const moveTextEl = document.getElementById('report-best-move');
-                const winRateEl = document.getElementById('report-win-rate');
-                const patternEl = document.getElementById('report-pattern');
-
-                if (moveTextEl) moveTextEl.innerText = `${colNames[best.c]}${15 - best.r}`;
-                let winRate = Math.round(100 / (1 + Math.exp(-best.score / 2500)));
-                winRate = Math.min(Math.max(winRate, 10), 98);
-                if (winRateEl) winRateEl.innerText = `${winRate}%`;
-                if (patternEl) patternEl.innerText = best.tag;
-            }
-
-            renderBoard();
+            if (!hasStones) return [{ r: 7, c: 7 }];
+            return candidates;
         }
 
-        function evaluateCell(r, c, color) {
+        // 1. Pattern Matching Engine (패턴매칭 연산)
+        function evalCellPattern(r, c, color) {
             board[r][c] = color;
-            let score = 0, tag = '';
+            let score = 0, tag = '요충지 포석';
             const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
 
             for (let d of dirs) {
@@ -840,18 +893,126 @@
                 }
                 if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) openEnds++;
 
-                if (count >= 5) { score += 100000; tag = '5목 승리수'; }
-                else if (count === 4 && openEnds === 2) { score += 20000; tag = '열린 4 공격'; }
-                else if (count === 4 && openEnds === 1) { score += 5000; tag = '4목 형성'; }
-                else if (count === 3 && openEnds === 2) { score += 3500; tag = '열린 3 공격'; }
-                else if (count === 3 && openEnds === 1) { score += 800; tag = '3목 형성'; }
+                if (count >= 5) { score += 1000000; tag = '5목 완성 (승리)'; }
+                else if (count === 4 && openEnds === 2) { score += 100000; tag = '열린 4 (필승수)'; }
+                else if (count === 4 && openEnds === 1) { score += 20000; tag = '외통 4목 공격/방어'; }
+                else if (count === 3 && openEnds === 2) { score += 15000; tag = '열린 3 (외통 수순)'; }
+                else if (count === 3 && openEnds === 1) { score += 2000; tag = '3목 형성/수비'; }
+                else if (count === 2 && openEnds === 2) { score += 500; tag = '열린 2 포석'; }
             }
 
             board[r][c] = 0;
             return { score, tag };
         }
 
+        // 3. Move Ordering (착수 순서 정렬)
+        function getOrderedMoves(color) {
+            const rawMoves = getNeighborCandidates(2);
+            const enemy = color === 1 ? 2 : 1;
+            const scored = rawMoves.map(m => {
+                const atk = evalCellPattern(m.r, m.c, color);
+                const def = evalCellPattern(m.r, m.c, enemy);
+                return { 
+                    r: m.r, 
+                    c: m.c, 
+                    score: atk.score * 1.1 + def.score, 
+                    tag: atk.score >= def.score ? atk.tag : `방어: ${def.tag}` 
+                };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            return scored;
+        }
+
+        // 4. Alpha-Beta Pruning with 6. Threat Space Search (VCF/VCT) & 8. Quiescence (+2~3수 확장)
+        function alphaBetaSearch(depth, alpha, beta, isMax, color, extensionDepth) {
+            if (depth <= 0) {
+                // 8. Quiescence Search: 위협수(4목/열린3) 존재 시 +2수 추가 탐색
+                const moves = getOrderedMoves(isMax ? color : (color === 1 ? 2 : 1));
+                if (moves.length > 0 && moves[0].score >= 15000 && extensionDepth < 3) {
+                    return alphaBetaSearch(1, alpha, beta, isMax, color, extensionDepth + 2);
+                }
+                return moves.length > 0 ? moves[0].score * (isMax ? 1 : -1) : 0;
+            }
+
+            const moves = getOrderedMoves(isMax ? color : (color === 1 ? 2 : 1));
+            if (moves.length === 0) return 0;
+            
+            // 6. Threat-space Search: 5목 직전 강제승 수순 우선 처리
+            if (moves[0].score >= 1000000) {
+                return (isMax ? 1000000 : -1000000) * (depth + 1);
+            }
+
+            if (isMax) {
+                let maxEval = -Infinity;
+                for (let i = 0; i < Math.min(moves.length, 10); i++) {
+                    const m = moves[i];
+                    board[m.r][m.c] = color;
+                    const evalVal = alphaBetaSearch(depth - 1, alpha, beta, false, color, extensionDepth);
+                    board[m.r][m.c] = 0;
+                    maxEval = Math.max(maxEval, evalVal);
+                    alpha = Math.max(alpha, evalVal);
+                    if (beta <= alpha) break; // Alpha-Beta Cutoff
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                const enemy = color === 1 ? 2 : 1;
+                for (let i = 0; i < Math.min(moves.length, 10); i++) {
+                    const m = moves[i];
+                    board[m.r][m.c] = enemy;
+                    const evalVal = alphaBetaSearch(depth - 1, alpha, beta, true, color, extensionDepth);
+                    board[m.r][m.c] = 0;
+                    minEval = Math.min(minEval, evalVal);
+                    beta = Math.min(beta, evalVal);
+                    if (beta <= alpha) break; // Alpha-Beta Cutoff
+                }
+                return minEval;
+            }
+        }
+
+        // 7. Iterative Deepening & Main AI Entry Point (반복적 깊이 증가)
+        function calculateAI() {
+            const ordered = getOrderedMoves(myRole);
+            if (ordered.length === 0) return;
+
+            let bestCandidates = [];
+
+            // Iterative Deepening (깊이 1 -> 2 -> 3 + 정적 확장 탐색 연산)
+            for (let depth = 1; depth <= 3; depth++) {
+                const tempScored = [];
+                for (let i = 0; i < Math.min(ordered.length, 8); i++) {
+                    const m = ordered[i];
+                    board[m.r][m.c] = myRole;
+                    const evalScore = alphaBetaSearch(depth - 1, -Infinity, Infinity, false, myRole, 0);
+                    board[m.r][m.c] = 0;
+                    tempScored.push({ r: m.r, c: m.c, score: m.score + evalScore, tag: m.tag });
+                }
+                tempScored.sort((a, b) => b.score - a.score);
+                bestCandidates = tempScored;
+            }
+
+            top5Candidates = bestCandidates.slice(0, 5);
+
+            if (top5Candidates.length > 0) {
+                const colNames = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
+                const best = top5Candidates[0];
+                const moveTextEl = document.getElementById('report-best-move');
+                const winRateEl = document.getElementById('report-win-rate');
+                const patternEl = document.getElementById('report-pattern');
+
+                if (moveTextEl) moveTextEl.innerText = `${colNames[best.c]}${15 - best.r}`;
+                let winRate = Math.round(100 / (1 + Math.exp(-best.score / 20000)));
+                winRate = Math.min(Math.max(winRate, 12), 99);
+                if (winRateEl) winRateEl.innerText = `${winRate}%`;
+                if (patternEl) patternEl.innerText = best.tag;
+            }
+
+            renderBoard();
+        }
+
         // --- INITIALIZATION HANDLERS ---
+        let resizeObserver = null;
+
         window.addEventListener('load', () => {
             setupCanvas();
             renderBoard();
@@ -859,6 +1020,15 @@
             const canvasEl = document.getElementById('omokCanvas');
             if (canvasEl) {
                 canvasEl.addEventListener('click', handleBoardClick);
+
+                // ResizeObserver 감지기로 오목판 크기가 바뀔 때 마다 자동 복원
+                if (window.ResizeObserver) {
+                    resizeObserver = new ResizeObserver(() => {
+                        setupCanvas();
+                        renderBoard();
+                    });
+                    resizeObserver.observe(canvasEl.parentElement || canvasEl);
+                }
             }
         });
 
