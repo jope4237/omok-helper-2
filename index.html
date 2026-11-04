@@ -300,22 +300,38 @@
 
         function setupCanvas() {
             canvas = document.getElementById('omokCanvas');
-            if (!canvas) return;
+            if (!canvas) return false;
             ctx = canvas.getContext('2d');
             
             const rect = canvas.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return false;
+
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
+            canvas.width = Math.round(rect.width * dpr);
+            canvas.height = Math.round(rect.height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            return true;
         }
 
         function renderBoard() {
-            if (!canvas || !ctx) setupCanvas();
-            if (!canvas || !ctx) return;
+            if (!canvas) canvas = document.getElementById('omokCanvas');
+            if (!canvas) return;
 
             const rect = canvas.getBoundingClientRect();
             const w = rect.width;
+            if (w === 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const targetWidth = Math.round(w * dpr);
+            const targetHeight = Math.round(w * dpr);
+
+            if (canvas.width !== targetWidth || canvas.height !== targetHeight || !ctx) {
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                ctx = canvas.getContext('2d');
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
             const padding = w / (BOARD_SIZE + 1);
             const cellSize = (w - padding * 2) / (BOARD_SIZE - 1);
 
@@ -653,7 +669,10 @@
             document.getElementById('blackPlayerName').innerText = isHost ? `${myNickname} (나)` : opponentNickname;
             document.getElementById('whitePlayerName').innerText = !isHost ? `${myNickname} (나)` : opponentNickname;
 
-            resetBoardState();
+            requestAnimationFrame(() => {
+                setupCanvas();
+                resetBoardState();
+            });
             appendChatMessage('시스템', `대국이 시작되었습니다! (${myNickname} vs ${opponentNickname})`);
         }
 
