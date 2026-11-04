@@ -139,23 +139,13 @@
                 <div id="ai-report-card" class="hidden bg-slate-800/90 p-4 rounded-xl border border-slate-700/80 shadow-xl space-y-2.5">
                     <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
                         <h3 class="text-amber-400 font-extrabold text-xs tracking-wider flex items-center gap-1.5">
-                            ⚡ 실시간 AI 분석 리포트
+                            ⚡ 실시간 AI 분석 리포트 (TOP 5)
                         </h3>
                         <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">STEALTH</span>
                     </div>
-                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
-                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-700/50">
-                            <p class="text-[10px] text-slate-400">추천 착수점</p>
-                            <p id="report-best-move" class="text-sm font-extrabold text-white mt-0.5 font-mono">-</p>
-                        </div>
-                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-700/50">
-                            <p class="text-[10px] text-slate-400">예상 승률</p>
-                            <p id="report-win-rate" class="text-sm font-extrabold text-emerald-400 mt-0.5 font-mono">-</p>
-                        </div>
-                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-700/50">
-                            <p class="text-[10px] text-slate-400">패턴 분석</p>
-                            <p id="report-pattern" class="text-[11px] font-bold text-amber-300 mt-0.5 truncate">-</p>
-                        </div>
+                    <!-- TOP 5 추천 수 목록 (글자 잘림 방지 및 5개 수 전체 표출) -->
+                    <div id="top5-candidates-container" class="space-y-2 text-xs">
+                        <p class="text-slate-400 text-center py-2">수 계산 대기 중...</p>
                     </div>
                 </div>
 
@@ -561,12 +551,12 @@
             isSoloPractice = true;
             myRole = 1;
             gameStatus = 'playing';
-            isAiActive = true; // 연습 모드 시 AI 힌트 자동 켜기
+            isAiActive = false; // AI 헬퍼 기본 OFF (스텔스 유지)
 
             document.getElementById('lobby-screen').classList.add('hidden');
             document.getElementById('loading-modal').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
-            document.getElementById('ai-report-card').classList.remove('hidden');
+            document.getElementById('ai-report-card').classList.add('hidden');
 
             document.getElementById('activeRoomCode').innerText = 'SOLO';
             document.getElementById('blackPlayerName').innerText = `${myNickname} (나)`;
@@ -576,7 +566,7 @@
                 setupCanvas();
                 resetBoardState();
             });
-            appendChatMessage('시스템', '🤖 AI 혼자 연습 모드가 시작되었습니다. 돌을 놓아보세요!');
+            appendChatMessage('시스템', '🤖 AI 혼자 연습 모드가 시작되었습니다. (/on 입력 시 힌트/헬퍼 활성화)');
             showToast('오목판이 활성화되었습니다!', 'success');
         }
 
@@ -798,10 +788,10 @@
             const msg = input.value.trim();
             if (!msg) return;
 
-            if (msg === '/힌트' || msg === '/분석') {
+            if (msg === '/on' || msg === '/힌트' || msg === '/분석') {
                 isAiActive = true;
                 document.getElementById('ai-report-card').classList.remove('hidden');
-                appendChatMessage('시스템', '🔒 비밀 AI 힌트 및 무지개 위치 배지가 활성화되었습니다.');
+                appendChatMessage('시스템', '🔒 비밀 AI 힌트 및 무지개 위치 배지가 활성화되었습니다. (/off 입력 시 비활성화)');
                 if (currentTurn === myRole && gameStatus === 'playing') calculateAI();
                 input.value = '';
                 return;
@@ -810,7 +800,7 @@
                 document.getElementById('ai-report-card').classList.add('hidden');
                 top5Candidates = [];
                 renderBoard();
-                appendChatMessage('시스템', '🔒 비밀 AI 힌트가 비활성화되었습니다.');
+                appendChatMessage('시스템', '🔒 비밀 AI 힌트가 비활성화되었습니다. (/on 입력 시 재활성화)');
                 input.value = '';
                 return;
             }
@@ -845,6 +835,16 @@
         // --- 8 GOMOKU ALGORITHMS FULL AI SEARCH ENGINE ---
         // 5. Transposition Table (전이테이블) & Hashing
         const TT = new Map();
+
+        function getBoardHash() {
+            let hash = '';
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    hash += board[r][c];
+                }
+            }
+            return hash;
+        }
 
         // 1 & 2. Neighbor Restriction (인접영역 제한 탐색)
         function getNeighborCandidates(dist = 2) {
@@ -923,15 +923,20 @@
             return scored;
         }
 
-        // 4. Alpha-Beta Pruning with 6. Threat Space Search (VCF/VCT) & 8. Quiescence (+2~3수 확장)
+        // 4. Alpha-Beta Pruning with 5. Transposition Table, 6. Threat Space Search (VCF/VCT) & 8. Quiescence (+2~3수 확장)
         function alphaBetaSearch(depth, alpha, beta, isMax, color, extensionDepth) {
+            const hashKey = `${getBoardHash()}_${depth}_${isMax}_${color}`;
+            if (TT.has(hashKey)) return TT.get(hashKey);
+
             if (depth <= 0) {
                 // 8. Quiescence Search: 위협수(4목/열린3) 존재 시 +2수 추가 탐색
                 const moves = getOrderedMoves(isMax ? color : (color === 1 ? 2 : 1));
                 if (moves.length > 0 && moves[0].score >= 15000 && extensionDepth < 3) {
                     return alphaBetaSearch(1, alpha, beta, isMax, color, extensionDepth + 2);
                 }
-                return moves.length > 0 ? moves[0].score * (isMax ? 1 : -1) : 0;
+                const res = moves.length > 0 ? moves[0].score * (isMax ? 1 : -1) : 0;
+                TT.set(hashKey, res);
+                return res;
             }
 
             const moves = getOrderedMoves(isMax ? color : (color === 1 ? 2 : 1));
@@ -939,9 +944,12 @@
             
             // 6. Threat-space Search: 5목 직전 강제승 수순 우선 처리
             if (moves[0].score >= 1000000) {
-                return (isMax ? 1000000 : -1000000) * (depth + 1);
+                const res = (isMax ? 1000000 : -1000000) * (depth + 1);
+                TT.set(hashKey, res);
+                return res;
             }
 
+            let resultVal = 0;
             if (isMax) {
                 let maxEval = -Infinity;
                 for (let i = 0; i < Math.min(moves.length, 10); i++) {
@@ -953,7 +961,7 @@
                     alpha = Math.max(alpha, evalVal);
                     if (beta <= alpha) break; // Alpha-Beta Cutoff
                 }
-                return maxEval;
+                resultVal = maxEval;
             } else {
                 let minEval = Infinity;
                 const enemy = color === 1 ? 2 : 1;
@@ -966,8 +974,11 @@
                     beta = Math.min(beta, evalVal);
                     if (beta <= alpha) break; // Alpha-Beta Cutoff
                 }
-                return minEval;
+                resultVal = minEval;
             }
+
+            TT.set(hashKey, resultVal);
+            return resultVal;
         }
 
         // 7. Iterative Deepening & Main AI Entry Point (반복적 깊이 증가)
@@ -976,6 +987,7 @@
             if (ordered.length === 0) return;
 
             let bestCandidates = [];
+            TT.clear(); // 전이테이블 초기화
 
             // Iterative Deepening (깊이 1 -> 2 -> 3 + 정적 확장 탐색 연산)
             for (let depth = 1; depth <= 3; depth++) {
@@ -993,18 +1005,33 @@
 
             top5Candidates = bestCandidates.slice(0, 5);
 
-            if (top5Candidates.length > 0) {
+            const container = document.getElementById('top5-candidates-container');
+            if (container && top5Candidates.length > 0) {
                 const colNames = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
-                const best = top5Candidates[0];
-                const moveTextEl = document.getElementById('report-best-move');
-                const winRateEl = document.getElementById('report-win-rate');
-                const patternEl = document.getElementById('report-pattern');
+                container.innerHTML = '';
 
-                if (moveTextEl) moveTextEl.innerText = `${colNames[best.c]}${15 - best.r}`;
-                let winRate = Math.round(100 / (1 + Math.exp(-best.score / 20000)));
-                winRate = Math.min(Math.max(winRate, 12), 99);
-                if (winRateEl) winRateEl.innerText = `${winRate}%`;
-                if (patternEl) patternEl.innerText = best.tag;
+                top5Candidates.forEach((cand, idx) => {
+                    const coord = `${colNames[cand.c]}${15 - cand.r}`;
+                    let winRate = Math.round(100 / (1 + Math.exp(-cand.score / 20000)));
+                    winRate = Math.min(Math.max(winRate, 12), 99);
+                    const colorHex = RAINBOW_COLORS[idx] || '#64748b';
+
+                    const item = document.createElement('div');
+                    item.className = 'bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 flex items-start gap-2.5 shadow-sm';
+                    item.innerHTML = `
+                        <div class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 mt-0.5 shadow" style="background-color: ${colorHex}">
+                            ${idx + 1}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-center mb-0.5">
+                                <span class="font-extrabold text-white font-mono text-xs">좌표 ${coord}</span>
+                                <span class="font-extrabold text-emerald-400 font-mono text-xs">${winRate}%</span>
+                            </div>
+                            <p class="text-[11px] text-amber-300/90 font-medium leading-tight break-words">${cand.tag}</p>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
             }
 
             renderBoard();
