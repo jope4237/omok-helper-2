@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>온라인 1:1 오목 (Omok)</title>
-    <!-- Tailwind CSS -->
+    <title>온라인 1:1 오목 (Gomoku)</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- MQTT.js Client library with fallback -->
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- MQTT.js with Dynamic Fallback -->
+    <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
     <script>
         if (typeof mqtt === 'undefined') {
-            document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"><\/script>');
+            document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"><\/script>');
         }
     </script>
-    <!-- Pretendard Font -->
+    <!-- Pretendard Web Font -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
         * {
@@ -47,12 +47,12 @@
                 </div>
                 <div>
                     <h1 class="text-base font-extrabold text-white leading-tight">온라인 1:1 오목 대국</h1>
-                    <p id="roomStatusText" class="text-xs text-slate-400">대기실 접속 대기 중</p>
+                    <p id="roomStatusText" class="text-xs text-slate-400">대기실 준비 완료</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="openLobbyScreen()" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition-all">
-                    🌐 방 선택 / 변경
+                <button onclick="leaveRoom()" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition-all">
+                    🌐 방 목록 / 변경
                 </button>
             </div>
         </header>
@@ -61,7 +61,7 @@
         <div id="lobby-screen" class="w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-5 my-8">
             <div class="text-center space-y-1">
                 <h2 class="text-xl font-black text-amber-400">오목 대국실 입장</h2>
-                <p class="text-xs text-slate-400">MQTT 초고속 웹소켓 통신망으로 100% 즉시 연결됩니다.</p>
+                <p class="text-xs text-slate-400">초고속 이중 통신망으로 100% 실시간 대국이 연결됩니다.</p>
             </div>
 
             <div class="space-y-4">
@@ -93,9 +93,9 @@
         <div id="loading-modal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
             <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-center space-y-4 max-w-sm w-full shadow-2xl">
                 <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-amber-500 border-t-transparent"></div>
-                <p id="loading-text" class="text-sm font-bold text-slate-200">연결 준비 중...</p>
+                <p id="loading-text" class="text-sm font-bold text-slate-200">상대방 접속 대기 중...</p>
                 <div id="room-code-display" class="hidden bg-slate-950 border border-slate-800 p-3 rounded-2xl">
-                    <p class="text-[11px] text-slate-400 mb-1">상대방에게 아래 코드를 전달하세요</p>
+                    <p class="text-[11px] text-slate-400 mb-1">상대방에게 아래 6자리 코드를 알려주세요</p>
                     <p id="room-code-text" class="text-2xl font-black font-mono text-amber-400 tracking-widest"></p>
                 </div>
                 <button onclick="cancelConnection()" class="text-xs text-slate-500 hover:text-slate-300 underline pt-1">대기 취소</button>
@@ -154,7 +154,7 @@
                             <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                             실시간 AI 연산 리포트
                         </h3>
-                        <span class="text-[10px] text-indigo-400 font-mono">Stealth AI v5</span>
+                        <span class="text-[10px] text-indigo-400 font-mono">Stealth AI Engine</span>
                     </div>
                     <div class="space-y-1.5 text-xs">
                         <div class="flex justify-between text-slate-300">
@@ -216,12 +216,11 @@
     </div>
 
     <script>
-        // --- CONSTANTS & GAME STATE ---
+        // --- CONSTANTS & STATE MANAGEMENT ---
         const BOARD_SIZE = 15;
-        let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0)); // 0: empty, 1: black, 2: white
+        let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0)); // 0: Empty, 1: Black, 2: White
         let lastMove = null;
         
-        let mqttClient = null;
         let roomCode = '';
         let isHost = false;
         let myRole = 1; // 1: Black (Host), 2: White (Guest)
@@ -231,11 +230,17 @@
         let myNickname = '';
         let opponentNickname = '';
 
+        // Network Managers
+        let mqttClient = null;
+        let broadcastChannel = null;
+        let pingInterval = null;
+
+        // Stealth AI Helper State
         let isAiActive = false;
         let top5Candidates = [];
         const RAINBOW_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'];
 
-        // --- WEB AUDIO API SOUNDS ---
+        // --- WEB AUDIO SOUND SYNTHESIZER ---
         let audioCtx = null;
         function getAudioContext() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -249,14 +254,14 @@
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(isBlack ? 300 : 420, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.07);
+                osc.frequency.setValueAtTime(isBlack ? 320 : 440, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.06);
                 gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.07);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.06);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 osc.start();
-                osc.stop(ctx.currentTime + 0.07);
+                osc.stop(ctx.currentTime + 0.06);
             } catch (e) {}
         }
 
@@ -268,7 +273,7 @@
                     const gain = ctx.createGain();
                     osc.type = 'triangle';
                     osc.frequency.value = freq;
-                    const startTime = ctx.currentTime + i * 0.09;
+                    const startTime = ctx.currentTime + i * 0.08;
                     gain.gain.setValueAtTime(0.2, startTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
                     osc.connect(gain);
@@ -279,7 +284,7 @@
             } catch (e) {}
         }
 
-        // --- TOAST NOTIFICATION ---
+        // --- CUSTOM TOAST NOTIFICATIONS ---
         function showToast(msg, type = 'info') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -294,7 +299,7 @@
             }, 3000);
         }
 
-        // --- CANVAS RENDERER ---
+        // --- CANVAS HIGH-DPR RENDERER ---
         const canvas = document.getElementById('omokCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -367,7 +372,7 @@
                 }
             }
 
-            // Last move marker
+            // Last move ring marker
             if (lastMove) {
                 const cx = padding + lastMove.c * cellSize;
                 const cy = padding + lastMove.r * cellSize;
@@ -378,7 +383,7 @@
                 ctx.stroke();
             }
 
-            // Secret Rainbow AI Badges ①~⑤ (Shown ONLY on user's turn when active)
+            // Stealth Rainbow Badges ①~⑤ (Drawn ONLY when stealth AI active AND it's my turn)
             if (isAiActive && currentTurn === myRole && gameStatus === 'playing' && top5Candidates.length > 0) {
                 top5Candidates.forEach((item, index) => {
                     const cx = padding + item.c * cellSize;
@@ -419,7 +424,7 @@
 
             if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE && board[row][col] === 0) {
                 executeMove(row, col, myRole);
-                sendMQTTMessage({ type: 'MOVE', r: row, c: col, color: myRole });
+                dispatchNetworkMessage({ type: 'MOVE', r: row, c: col, color: myRole });
             }
         });
 
@@ -434,8 +439,8 @@
             if (isWin) {
                 gameStatus = 'finished';
                 playWinSound();
-                const winner = color === myRole ? '나의' : '상대방의';
-                showToast(`🎉 ${winner} 승리!`, 'success');
+                const winnerText = color === myRole ? '나의' : '상대방의';
+                showToast(`🎉 ${winnerText} 승리입니다!`, 'success');
             }
 
             renderBoard();
@@ -461,21 +466,21 @@
             return false;
         }
 
-        // --- INSTANT NON-BLOCKING ROOM CREATION & MQTT ---
+        // --- NON-BLOCKING DUAL BUS NETWORK ARCHITECTURE ---
         function createRoom() {
             myNickname = document.getElementById('nickname-input').value.trim() || `방장_${Math.floor(1000 + Math.random()*9000)}`;
             roomCode = Math.floor(100000 + Math.random() * 900000).toString();
             isHost = true;
             myRole = 1; // Black
 
-            // 1. INSTANT UI UPDATE (0 Seconds delay!)
+            // 1. INSTANT ZERO-DELAY UI UPDATE
             document.getElementById('loading-modal').classList.remove('hidden');
             document.getElementById('loading-text').innerText = '상대방 접속 대기 중...';
             document.getElementById('room-code-text').innerText = roomCode;
             document.getElementById('room-code-display').classList.remove('hidden');
 
-            // 2. Background MQTT Connection
-            initMQTT(roomCode);
+            // 2. Initialize Dual Communication Bus (Local Broadcast + MQTT)
+            setupNetwork(roomCode);
         }
 
         function joinRoom() {
@@ -488,69 +493,95 @@
             myRole = 2; // White
 
             document.getElementById('loading-modal').classList.remove('hidden');
-            document.getElementById('loading-text').innerText = '방에 접속 중...';
+            document.getElementById('loading-text').innerText = '호스트에 연결 중...';
             document.getElementById('room-code-display').classList.add('hidden');
 
-            initMQTT(roomCode, () => {
-                sendMQTTMessage({ type: 'JOIN', nickname: myNickname });
+            setupNetwork(roomCode, () => {
+                dispatchNetworkMessage({ type: 'JOIN', nickname: myNickname });
             });
         }
 
-        function initMQTT(code, onConnectCb = null) {
-            if (mqttClient) {
-                try { mqttClient.end(); } catch(e) {}
+        function setupNetwork(code, onReadyCb = null) {
+            // A. BroadcastChannel for 1ms local multi-tab connection
+            if (window.BroadcastChannel) {
+                if (broadcastChannel) broadcastChannel.close();
+                broadcastChannel = new BroadcastChannel(`omok_bc_${code}`);
+                broadcastChannel.onmessage = (e) => handleNetworkData(e.data);
             }
 
-            const primaryBroker = 'wss://broker.emqx.io:8084/mqtt';
-            const fallbackBroker = 'wss://broker.hivemq.com:8884/mqtt';
+            // B. MQTT over WebSockets with Failover Brokers
+            if (typeof mqtt !== 'undefined') {
+                if (mqttClient) try { mqttClient.end(); } catch(e) {}
 
-            const connectOptions = {
-                clientId: 'omok_v5_' + Math.random().toString(16).substring(2, 10),
-                clean: true,
-                connectTimeout: 5000,
-                reconnectPeriod: 2000
-            };
+                const primaryBroker = 'wss://broker.emqx.io:8084/mqtt';
+                const fallbackBroker = 'wss://broker.hivemq.com:8884/mqtt';
+                const topic = `omok/v6/${code}`;
 
-            mqttClient = mqtt.connect(primaryBroker, connectOptions);
+                const options = {
+                    clientId: 'omok_' + Math.random().toString(16).substring(2, 10),
+                    clean: true,
+                    connectTimeout: 4000,
+                    reconnectPeriod: 2000
+                };
 
-            let fallbackAttempted = false;
-            mqttClient.on('error', () => {
-                if (!fallbackAttempted) {
-                    fallbackAttempted = true;
-                    mqttClient = mqtt.connect(fallbackBroker, connectOptions);
-                    bindMQTTEvents(code, onConnectCb);
+                try {
+                    mqttClient = mqtt.connect(primaryBroker, options);
+                    let fallbackTried = false;
+
+                    mqttClient.on('error', () => {
+                        if (!fallbackTried) {
+                            fallbackTried = true;
+                            mqttClient = mqtt.connect(fallbackBroker, options);
+                            bindMQTT(topic, onReadyCb);
+                        }
+                    });
+
+                    bindMQTT(topic, onReadyCb);
+                } catch (err) {
+                    if (onReadyCb) onReadyCb();
                 }
-            });
+            } else {
+                if (onReadyCb) onReadyCb();
+            }
 
-            bindMQTTEvents(code, onConnectCb);
+            // Keep-Alive Ping (5 sec)
+            if (pingInterval) clearInterval(pingInterval);
+            pingInterval = setInterval(() => {
+                if (gameStatus === 'playing') dispatchNetworkMessage({ type: 'PING' });
+            }, 5000);
         }
 
-        function bindMQTTEvents(code, onConnectCb) {
-            const topic = `omok/v5/${code}`;
-
+        function bindMQTT(topic, onReadyCb) {
             mqttClient.on('connect', () => {
                 mqttClient.subscribe(topic, { qos: 1 });
-                if (onConnectCb) onConnectCb();
+                if (onReadyCb) onReadyCb();
             });
 
-            mqttClient.on('message', (t, message) => {
+            mqttClient.on('message', (t, msg) => {
                 try {
-                    const data = JSON.parse(message.toString());
-                    handleMQTTData(data);
+                    const data = JSON.parse(msg.toString());
+                    handleNetworkData(data);
                 } catch(e) {}
             });
         }
 
-        function sendMQTTMessage(payload) {
-            if (mqttClient && roomCode) {
-                mqttClient.publish(`omok/v5/${roomCode}`, JSON.stringify(payload), { qos: 1 });
+        function dispatchNetworkMessage(payload) {
+            // Send via BroadcastChannel
+            if (broadcastChannel) {
+                try { broadcastChannel.postMessage(payload); } catch(e) {}
+            }
+            // Send via MQTT
+            if (mqttClient && mqttClient.connected) {
+                try { mqttClient.publish(`omok/v6/${roomCode}`, JSON.stringify(payload), { qos: 1 }); } catch(e) {}
             }
         }
 
-        function handleMQTTData(data) {
+        function handleNetworkData(data) {
+            if (!data || !data.type) return;
+
             if (data.type === 'JOIN' && isHost) {
                 opponentNickname = data.nickname;
-                sendMQTTMessage({ type: 'JOIN_ACK', nickname: myNickname });
+                dispatchNetworkMessage({ type: 'JOIN_ACK', nickname: myNickname });
                 startMatch();
             } else if (data.type === 'JOIN_ACK' && !isHost) {
                 opponentNickname = data.nickname;
@@ -590,6 +621,7 @@
         }
 
         function cancelConnection() {
+            if (broadcastChannel) broadcastChannel.close();
             if (mqttClient) try { mqttClient.end(); } catch(e) {}
             document.getElementById('loading-modal').classList.add('hidden');
         }
@@ -612,13 +644,13 @@
         }
 
         function requestReset() {
-            sendMQTTMessage({ type: 'RESET_REQ' });
+            dispatchNetworkMessage({ type: 'RESET_REQ' });
             showToast('상대방에게 판 리셋을 요청했습니다.');
         }
 
         function respondReset(accept) {
             document.getElementById('resetModal').classList.add('hidden');
-            sendMQTTMessage({ type: 'RESET_ACK', accept });
+            dispatchNetworkMessage({ type: 'RESET_ACK', accept });
             if (accept) resetBoardState();
         }
 
@@ -638,18 +670,18 @@
             }
         }
 
-        // --- CHAT & STEALTH SECRET COMMANDS ---
+        // --- CHAT & SECRET STEALTH COMMAND INTERCEPTION ---
         function handleSendChat(e) {
             e.preventDefault();
             const input = document.getElementById('chat-input');
             const msg = input.value.trim();
             if (!msg) return;
 
-            // Secret Command Detection
+            // Intercept Stealth Commands
             if (msg === '/힌트' || msg === '/분석') {
                 isAiActive = true;
                 document.getElementById('ai-report-card').classList.remove('hidden');
-                appendChatMessage('시스템', '비밀 AI 힌트가 활성화되었습니다.');
+                appendChatMessage('시스템', '비밀 AI 힌트 기능이 활성화되었습니다.');
                 if (currentTurn === myRole && gameStatus === 'playing') calculateAI();
                 input.value = '';
                 return;
@@ -658,13 +690,13 @@
                 document.getElementById('ai-report-card').classList.add('hidden');
                 top5Candidates = [];
                 renderBoard();
-                appendChatMessage('시스템', '비밀 AI 힌트가 비활성화되었습니다.');
+                appendChatMessage('시스템', '비밀 AI 힌트 기능이 비활성화되었습니다.');
                 input.value = '';
                 return;
             }
 
             appendChatMessage(myNickname, msg);
-            sendMQTTMessage({ type: 'CHAT', sender: myNickname, message: msg });
+            dispatchNetworkMessage({ type: 'CHAT', sender: myNickname, message: msg });
             input.value = '';
         }
 
@@ -689,7 +721,7 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        // --- 8 ALGORITHMS AI EVALUATION ENGINE ---
+        // --- 8 GOMOKU ALGORITHMS AI EVALUATION ENGINE ---
         function calculateAI() {
             const candidates = [];
             const myColorVal = myRole;
@@ -718,7 +750,7 @@
                 document.getElementById('report-best-move').innerText = `${colNames[best.c]}${15 - best.r}`;
                 
                 let winRate = Math.round(100 / (1 + Math.exp(-best.score / 2500)));
-                winRate = Math.min(Math.max(winRate, 8), 98);
+                winRate = Math.min(Math.max(winRate, 10), 98);
                 document.getElementById('report-win-rate').innerText = `${winRate}%`;
                 document.getElementById('report-pattern').innerText = best.tag;
             }
@@ -741,12 +773,16 @@
                 if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) openEnds++;
 
                 nr = r - d[0]; nc = c - d[1];
+                while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) {
+                    // check backwards
+                }
+                nr = r - d[0]; nc = c - d[1];
                 while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) {
                     count++; nr -= d[0]; nc -= d[1];
                 }
                 if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) openEnds++;
 
-                if (count >= 5) { score += 100000; tag = '5목 완성'; }
+                if (count >= 5) { score += 100000; tag = '5목 승리수'; }
                 else if (count === 4 && openEnds === 2) { score += 20000; tag = '열린 4 공격'; }
                 else if (count === 4 && openEnds === 1) { score += 5000; tag = '4목 형성'; }
                 else if (count === 3 && openEnds === 2) { score += 3500; tag = '열린 3 공격'; }
@@ -757,14 +793,12 @@
             return { score, tag };
         }
 
-        function openLobbyScreen() {
-            leaveRoom();
-        }
-
+        // --- LIFECYCLE EVENT HANDLERS ---
         window.addEventListener('load', () => {
             setupCanvas();
             renderBoard();
         });
+
         window.addEventListener('resize', () => {
             setupCanvas();
             renderBoard();
