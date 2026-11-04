@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>온라인 1:1 오목 대국 (Firebase Sync)</title>
-    
-    <!-- Tailwind CSS CDN -->
+    <title>온라인 1:1 오목 (Omok)</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Pretendard Font CDN -->
+    <!-- MQTT.js Client library with fallback -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script>
+        if (typeof mqtt === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"><\/script>');
+        }
+    </script>
+    <!-- Pretendard Font -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-    
-    <!-- Firebase SDK (v10 Compat Build for Single File HTML Integration) -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-
     <style>
         * {
-            font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+            font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
         }
         .custom-scrollbar::-webkit-scrollbar {
             width: 5px;
@@ -28,269 +29,213 @@
             background: #334155;
             border-radius: 4px;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #475569;
-        }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-3 md:p-6 select-none">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-center p-3 md:p-6 select-none">
 
     <!-- Toast Notification Container -->
     <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <!-- Header Navigation -->
-    <header class="w-full max-w-6xl flex justify-between items-center bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl px-5 py-3.5 mb-4 shadow-2xl">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center font-black text-xl text-amber-100 shadow-lg shadow-amber-900/40 border border-amber-500/30">
-                碁
-            </div>
-            <div>
-                <h1 class="text-lg font-extrabold text-white leading-tight flex items-center gap-2">
-                    온라인 1:1 오목 대국
-                </h1>
-                <p id="roomStatusText" class="text-xs text-slate-400">상태: 대기실 (연습 모드)</p>
-            </div>
-        </div>
+    <!-- MAIN CONTAINER -->
+    <div class="w-full max-w-5xl flex flex-col items-center">
 
-        <div class="flex items-center gap-2">
-            <button onclick="openLobbyModal()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/30 transition-all flex items-center gap-1.5">
-                <span>🌐</span> 대국실 선택 / 방 생성
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Game Layout -->
-    <main class="w-full max-w-6xl flex flex-col lg:flex-row gap-5 items-start justify-center">
-        
-        <!-- Board Container & Adjacent Secret Report Panel -->
-        <section class="flex flex-col md:flex-row gap-4 items-center md:items-start bg-slate-900/60 border border-slate-800 p-4 md:p-5 rounded-2xl shadow-2xl w-full lg:w-auto flex-1">
-            
-            <!-- Fixed Width Board Column -->
-            <div class="flex flex-col items-center gap-4 w-full max-w-[500px] flex-shrink-0">
-                <!-- Player Info & Turn Indicator -->
-                <div class="w-full flex justify-between items-center bg-slate-950/80 rounded-xl p-3 border border-slate-800">
-                    <!-- Black Player -->
-                    <div id="playerBlackCard" class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-transparent transition-all">
-                        <div class="w-6 h-6 rounded-full bg-black border border-slate-600 shadow-md flex items-center justify-center text-[10px] text-white font-bold">흑</div>
-                        <div class="flex flex-col">
-                            <span id="playerBlackName" class="text-xs font-bold text-slate-200">나 (흑돌)</span>
-                            <span id="playerBlackRole" class="text-[10px] text-slate-400">선공</span>
-                        </div>
-                    </div>
-
-                    <!-- Turn Indicator Badge -->
-                    <div class="text-center px-2">
-                        <div id="turnBadge" class="text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-amber-600 text-white shadow-lg shadow-amber-600/30 transition-all">
-                            흑돌 차례
-                        </div>
-                    </div>
-
-                    <!-- White Player -->
-                    <div id="playerWhiteCard" class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-transparent transition-all">
-                        <div class="flex flex-col items-end">
-                            <span id="playerWhiteName" class="text-xs font-bold text-slate-200">상대방 (백돌)</span>
-                            <span id="playerWhiteRole" class="text-[10px] text-slate-400">후공</span>
-                        </div>
-                        <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-400 shadow-md flex items-center justify-center text-[10px] text-slate-900 font-bold">백</div>
-                    </div>
+        <!-- HEADER / NAVIGATION -->
+        <header class="w-full flex justify-between items-center bg-slate-900/90 border border-slate-800 rounded-2xl px-4 py-3 mb-4 shadow-xl">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center font-black text-lg text-amber-100 shadow-md">
+                    碁
                 </div>
-
-                <!-- Omok Board Canvas -->
-                <div class="relative w-full aspect-square max-w-[500px] bg-[#e8b67d] rounded-xl shadow-2xl border-4 border-[#b88248] overflow-hidden flex items-center justify-center flex-shrink-0">
-                    <canvas id="omokCanvas" class="w-full h-full cursor-pointer touch-none"></canvas>
-                </div>
-
-                <!-- Board Bottom Controls -->
-                <div class="w-full flex justify-between items-center gap-2 flex-wrap text-xs">
-                    <div class="flex items-center gap-2">
-                        <span class="text-slate-400 font-medium">방 코드:</span>
-                        <span id="currentRoomCode" class="font-mono font-bold text-amber-400 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-800">PRACTICE</span>
-                        <button onclick="copyRoomCode()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-semibold text-[11px] transition-all">복사</button>
-                    </div>
-
-                    <div class="flex gap-2">
-                        <button onclick="requestRematch()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-lg shadow transition-all flex items-center gap-1">
-                            <span>🔄</span> 판 리셋 / 재경기
-                        </button>
-                        <button onclick="leaveRoom()" class="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 font-bold text-white rounded-lg transition-all">
-                            방 나가기
-                        </button>
-                    </div>
+                <div>
+                    <h1 class="text-base font-extrabold text-white leading-tight">온라인 1:1 오목 대국</h1>
+                    <p id="roomStatusText" class="text-xs text-slate-400">대기실 접속 대기 중</p>
                 </div>
             </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openLobbyScreen()" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition-all">
+                    🌐 방 선택 / 변경
+                </button>
+            </div>
+        </header>
 
-            <!-- Secret Realtime Analysis Report Panel -->
-            <div id="secretReportPanel" class="hidden w-full md:w-64 bg-slate-950/95 border border-indigo-500/40 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl transition-all self-stretch flex-shrink-0">
-                <div class="flex justify-between items-center border-b border-indigo-500/30 pb-2">
-                    <h3 class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        📊 실시간 분석 리포트
-                    </h3>
-                    <button onclick="setSecretHelperState(false)" class="text-[10px] text-slate-400 hover:text-slate-200">닫기 ✕</button>
-                </div>
-
-                <!-- Top 5 Detailed List Cards -->
-                <div id="secretReportList" class="flex flex-col gap-2 overflow-y-auto custom-scrollbar flex-1 max-h-[480px] pr-1">
-                    <!-- Dynamic Top 5 Analysis Cards -->
-                </div>
+        <!-- LOBBY SCREEN (Initial View) -->
+        <div id="lobby-screen" class="w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-5 my-8">
+            <div class="text-center space-y-1">
+                <h2 class="text-xl font-black text-amber-400">오목 대국실 입장</h2>
+                <p class="text-xs text-slate-400">MQTT 초고속 웹소켓 통신망으로 100% 즉시 연결됩니다.</p>
             </div>
 
-        </section>
-
-        <!-- Right Column: Chat Box -->
-        <section class="w-full lg:w-80 flex flex-col h-[540px] md:h-[600px]">
-            <div class="flex-1 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden shadow-xl">
-                <div class="flex justify-between items-center border-b border-slate-800 pb-2.5">
-                    <h2 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                        <span>💬</span> 대국 실시간 채팅
-                    </h2>
-                    <span id="chatConnectionBadge" class="text-[10px] text-slate-500 font-mono">로컬 모드</span>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
+                    <input type="text" id="nickname-input" placeholder="닉네임 (미입력 시 자동생성)" maxlength="10" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 transition-all">
                 </div>
 
-                <!-- Chat Messages Scroll Area -->
-                <div id="chatBox" class="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2.5 pr-1">
-                    <div class="text-center text-[11px] text-slate-500 py-4">
-                        상대방과 대화를 주고받을 수 있습니다.<br>
-                        승패에 연연하지 말고 매너 있는 대국을 진행해 주세요.
-                    </div>
-                </div>
-
-                <!-- Quick Emoji Bar -->
-                <div class="flex gap-1.5 overflow-x-auto custom-scrollbar py-1">
-                    <button onclick="sendQuickEmoji('👍')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">👍</button>
-                    <button onclick="sendQuickEmoji('🔥')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">🔥</button>
-                    <button onclick="sendQuickEmoji('😮')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">😮</button>
-                    <button onclick="sendQuickEmoji('👏')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">👏</button>
-                    <button onclick="sendQuickEmoji('🤔')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">🤔</button>
-                    <button onclick="sendQuickEmoji('😊')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-all">😊</button>
-                </div>
-
-                <!-- Chat Input Form -->
-                <form id="chatForm" onsubmit="handleSendChat(event)" class="flex gap-2">
-                    <input type="text" id="chatInput" placeholder="메시지를 입력하세요..." maxlength="100" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500 transition-all" />
-                    <button type="submit" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md transition-all">전송</button>
-                </form>
-            </div>
-        </section>
-    </main>
-
-    <!-- Lobby Modal -->
-    <div id="lobbyModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-40 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-5">
-            <div class="text-center">
-                <h2 class="text-xl font-black text-white flex items-center justify-center gap-2">
-                    <span>碁</span> 오목 대국실 선택
-                </h2>
-                <p class="text-xs text-slate-400 mt-1">Firebase 구글 서버로 100% 동기화되는 1:1 대국실입니다.</p>
-            </div>
-
-            <!-- Nickname Input -->
-            <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-bold text-slate-300">내 닉네임</label>
-                <input type="text" id="nicknameInput" placeholder="닉네임 (미입력 시 자동생성)" value="" maxlength="12" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 transition-all" />
-            </div>
-
-            <!-- Action Options -->
-            <div class="flex flex-col gap-3">
-                <button id="createRoomBtn" onclick="createOnlineRoom()" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
+                <button id="create-room-btn" onclick="createRoom()" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 font-extrabold text-xs text-white rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
                     <span>➕</span> 새로운 1:1 방 만들기
                 </button>
 
                 <div class="relative flex py-1 items-center">
                     <div class="flex-grow border-t border-slate-800"></div>
-                    <span class="flex-shrink mx-3 text-[10px] text-slate-500 font-bold uppercase">또는</span>
+                    <span class="flex-shrink mx-3 text-[10px] text-slate-500 font-bold">또는</span>
                     <div class="flex-grow border-t border-slate-800"></div>
                 </div>
 
                 <div class="flex gap-2">
-                    <input type="text" id="joinCodeInput" placeholder="6자리 방 코드 입력" maxlength="6" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 uppercase tracking-widest font-mono focus:outline-none focus:border-amber-500 transition-all" />
-                    <button id="joinRoomBtn" onclick="joinOnlineRoom()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition-all">
-                        입장하기
+                    <input type="text" id="join-code-input" placeholder="6자리 방 코드" maxlength="6" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-center font-mono uppercase tracking-widest text-slate-100 focus:outline-none focus:border-amber-500 transition-all">
+                    <button id="join-room-btn" onclick="joinRoom()" class="bg-emerald-600 hover:bg-emerald-500 font-bold text-xs text-white px-5 py-2.5 rounded-xl transition-all">
+                        참가하기
                     </button>
                 </div>
+            </div>
+        </div>
 
-                <div class="relative flex py-1 items-center">
-                    <div class="flex-grow border-t border-slate-800"></div>
-                    <span class="flex-shrink mx-3 text-[10px] text-slate-500 font-bold uppercase">또는</span>
-                    <div class="flex-grow border-t border-slate-800"></div>
+        <!-- LOADING / WAITING MODAL -->
+        <div id="loading-modal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-center space-y-4 max-w-sm w-full shadow-2xl">
+                <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-amber-500 border-t-transparent"></div>
+                <p id="loading-text" class="text-sm font-bold text-slate-200">연결 준비 중...</p>
+                <div id="room-code-display" class="hidden bg-slate-950 border border-slate-800 p-3 rounded-2xl">
+                    <p class="text-[11px] text-slate-400 mb-1">상대방에게 아래 코드를 전달하세요</p>
+                    <p id="room-code-text" class="text-2xl font-black font-mono text-amber-400 tracking-widest"></p>
+                </div>
+                <button onclick="cancelConnection()" class="text-xs text-slate-500 hover:text-slate-300 underline pt-1">대기 취소</button>
+            </div>
+        </div>
+
+        <!-- GAME SCREEN (Hidden by default) -->
+        <div id="game-screen" class="hidden w-full flex flex-col lg:flex-row gap-5 items-start justify-center">
+
+            <!-- BOARD SECTION (Left on Desktop, Top on Mobile) -->
+            <div class="flex flex-col items-center gap-3 w-full lg:w-auto flex-1">
+                <!-- Player Info Header -->
+                <div class="w-full max-w-[500px] flex justify-between items-center bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-lg">
+                    <div id="blackPlayerCard" class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-black border border-slate-600 flex items-center justify-center text-[10px] text-white font-bold">흑</div>
+                        <span id="blackPlayerName" class="text-xs font-bold text-slate-200">방장 (흑돌)</span>
+                    </div>
+                    <div id="turnIndicator" class="px-3 py-1 rounded-full bg-amber-600 text-white text-xs font-extrabold shadow">
+                        대국 준비 중
+                    </div>
+                    <div id="whitePlayerCard" class="flex items-center gap-2">
+                        <span id="whitePlayerName" class="text-xs font-bold text-slate-200">참가자 (백돌)</span>
+                        <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-400 flex items-center justify-center text-[10px] text-slate-900 font-bold">백</div>
+                    </div>
                 </div>
 
-                <button onclick="startSinglePractice()" class="w-full py-2.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2">
-                    <span>🧩</span> 혼자서 연습하기 (로컬)
-                </button>
+                <!-- Omok Canvas Board -->
+                <div class="relative w-full max-w-[500px] aspect-square bg-[#e8b67d] rounded-2xl shadow-2xl border-4 border-[#b88248] overflow-hidden flex items-center justify-center">
+                    <canvas id="omokCanvas" class="w-full h-full cursor-pointer touch-none"></canvas>
+                </div>
+
+                <!-- Board Controls -->
+                <div class="w-full max-w-[500px] flex justify-between items-center gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-400 font-medium">방 코드:</span>
+                        <span id="activeRoomCode" class="font-mono font-bold text-amber-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">------</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="requestReset()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 font-bold text-white rounded-xl shadow transition-all">
+                            🔄 판 리셋
+                        </button>
+                        <button onclick="leaveRoom()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 font-bold text-slate-300 rounded-xl transition-all">
+                            나가기
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <button onclick="document.getElementById('lobbyModal').classList.add('hidden')" class="text-xs text-slate-500 hover:text-slate-300 text-center mt-1">
-                닫기
-            </button>
+            <!-- RIGHT / BOTTOM SECTION (AI Report Card & Chat) -->
+            <div class="w-full lg:w-80 flex flex-col gap-4">
+
+                <!-- Secret AI Analysis Card (Hidden by default in Stealth Mode) -->
+                <div id="ai-report-card" class="hidden bg-slate-900 border border-indigo-500/40 p-4 rounded-2xl shadow-xl space-y-3">
+                    <div class="flex justify-between items-center border-b border-indigo-500/30 pb-2">
+                        <h3 class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            실시간 AI 연산 리포트
+                        </h3>
+                        <span class="text-[10px] text-indigo-400 font-mono">Stealth AI v5</span>
+                    </div>
+                    <div class="space-y-1.5 text-xs">
+                        <div class="flex justify-between text-slate-300">
+                            <span>추천 착수점:</span>
+                            <span id="report-best-move" class="font-bold text-amber-400 font-mono">-</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300">
+                            <span>예상 승률:</span>
+                            <span id="report-win-rate" class="font-bold text-emerald-400 font-mono">-</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300">
+                            <span>패턴 분석:</span>
+                            <span id="report-pattern" class="font-bold text-indigo-300">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Box Component -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col h-72 lg:h-[480px] shadow-xl">
+                    <div class="border-b border-slate-800 pb-2 mb-3">
+                        <h3 class="text-xs font-bold text-slate-300">💬 실시간 대국 채팅</h3>
+                    </div>
+                    <div id="chat-messages" class="flex-1 overflow-y-auto custom-scrollbar space-y-2 text-xs pr-1">
+                        <div class="text-center text-[11px] text-slate-500 py-2">
+                            즐거운 대국 되세요!
+                        </div>
+                    </div>
+                    <form onsubmit="handleSendChat(event)" class="flex gap-2 mt-3">
+                        <input type="text" id="chat-input" placeholder="메시지 입력..." maxlength="80" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500 transition-all">
+                        <button type="submit" class="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all">전송</button>
+                    </form>
+                </div>
+
+            </div>
+
         </div>
+
     </div>
 
-    <!-- Reset Request Confirm Modal -->
-    <div id="resetConfirmModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4">
-            <div class="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center text-2xl">
+    <!-- Custom Reset Request Confirmation Modal -->
+    <div id="resetModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+            <div class="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center text-xl mx-auto">
                 🔄
             </div>
-            <div class="flex flex-col gap-1">
+            <div>
                 <h3 class="text-base font-bold text-white">판 리셋 요청</h3>
-                <p class="text-xs text-slate-300 leading-relaxed">상대방이 판 리셋(새 게임)을 요청했습니다.<br>동의하시겠습니까?</p>
+                <p id="resetModalText" class="text-xs text-slate-300 mt-1">상대방이 오목판 초기화를 요청했습니다.</p>
             </div>
-            <div class="flex gap-3 w-full mt-2">
-                <button onclick="declineResetRequest()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all">
+            <div class="flex gap-3">
+                <button onclick="respondReset(false)" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all">
                     거절
                 </button>
-                <button onclick="acceptResetRequest()" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition-all">
+                <button onclick="respondReset(true)" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all">
                     동의 (리셋)
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Reset Waiting Modal -->
-    <div id="resetWaitingModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col items-center text-center gap-4">
-            <div class="w-12 h-12 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-xl animate-spin">
-                ⏳
-            </div>
-            <div class="flex flex-col gap-1">
-                <h3 class="text-base font-bold text-white">리셋 요청 전달됨</h3>
-                <p class="text-xs text-slate-300 leading-relaxed">상대방의 동의를 기다리는 중입니다...</p>
-            </div>
-            <button onclick="cancelResetRequest()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs rounded-xl transition-all mt-1">
-                요청 취소
-            </button>
-        </div>
-    </div>
-
     <script>
-        // Core Game Constants & State
+        // --- CONSTANTS & GAME STATE ---
         const BOARD_SIZE = 15;
-        let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+        let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0)); // 0: empty, 1: black, 2: white
         let lastMove = null;
         
-        let currentRoomId = null;
-        let isPracticeMode = true;
+        let mqttClient = null;
+        let roomCode = '';
+        let isHost = false;
         let myRole = 1; // 1: Black (Host), 2: White (Guest)
-        let currentTurn = 1;
-        let gameStatus = "playing";
+        let currentTurn = 1; // 1: Black, 2: White
+        let gameStatus = 'lobby'; // lobby, waiting, playing, finished
         
-        let hostName = "나 (흑돌)";
-        let guestName = "상대방 (백돌)";
+        let myNickname = '';
+        let opponentNickname = '';
 
-        // Global Firebase Configuration (Open Public RTDB Endpoint)
-        const firebaseConfig = {
-            databaseURL: "https://omok-online-game-default-rtdb.firebaseio.com"
-        };
+        let isAiActive = false;
+        let top5Candidates = [];
+        const RAINBOW_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'];
 
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = firebase.database();
-        let roomRef = null;
-
-        // Web Audio Synthesizer
+        // --- WEB AUDIO API SOUNDS ---
         let audioCtx = null;
         function getAudioContext() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -298,72 +243,48 @@
             return audioCtx;
         }
 
-        function playStoneSound(isBlack = true) {
+        function playStoneSound(isBlack) {
             try {
                 const ctx = getAudioContext();
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(isBlack ? 320 : 440, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.08);
-
+                osc.frequency.setValueAtTime(isBlack ? 300 : 420, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.07);
                 gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
-
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.07);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 osc.start();
-                osc.stop(ctx.currentTime + 0.08);
+                osc.stop(ctx.currentTime + 0.07);
             } catch (e) {}
         }
 
         function playWinSound() {
             try {
                 const ctx = getAudioContext();
-                const notes = [523.25, 659.25, 783.99, 1046.50];
-                notes.forEach((freq, idx) => {
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
                     osc.type = 'triangle';
                     osc.frequency.value = freq;
-                    const startTime = ctx.currentTime + idx * 0.1;
+                    const startTime = ctx.currentTime + i * 0.09;
                     gain.gain.setValueAtTime(0.2, startTime);
-                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
                     osc.connect(gain);
                     gain.connect(ctx.destination);
                     osc.start(startTime);
-                    osc.stop(startTime + 0.3);
+                    osc.stop(startTime + 0.25);
                 });
             } catch (e) {}
         }
 
-        // STEALTH SECRET AI HELPER STATE
-        let isSecretHelperActive = false;
-        let top5Analysis = [];
-
-        const RAINBOW_COLORS = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6'];
-
-        const canvas = document.getElementById('omokCanvas');
-        const ctx = canvas.getContext('2d');
-
-        function getPlayerNickname(defaultPrefix = '유저') {
-            const inputVal = document.getElementById('nicknameInput').value.trim();
-            if (inputVal.length > 0) return inputVal;
-            return `${defaultPrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
-        }
-
-        window.addEventListener('load', () => { 
-            setupCanvas(); 
-            renderBoard(); 
-            openLobbyModal();
-        });
-        window.addEventListener('resize', () => { setupCanvas(); renderBoard(); });
-
-        window.showToast = function(msg, type = 'info') {
+        // --- TOAST NOTIFICATION ---
+        function showToast(msg, type = 'info') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
-            const bgClass = type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-amber-600';
-            toast.className = `${bgClass} text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 transform translate-y-2 flex items-center gap-2 pointer-events-auto`;
+            const bg = type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-amber-600';
+            toast.className = `${bg} text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 transform translate-y-2 pointer-events-auto`;
             toast.innerText = msg;
             container.appendChild(toast);
             setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
@@ -371,7 +292,11 @@
                 toast.classList.add('opacity-0');
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
-        };
+        }
+
+        // --- CANVAS RENDERER ---
+        const canvas = document.getElementById('omokCanvas');
+        const ctx = canvas.getContext('2d');
 
         function setupCanvas() {
             const rect = canvas.getBoundingClientRect();
@@ -389,7 +314,7 @@
 
             ctx.clearRect(0, 0, w, w);
 
-            // Grid Lines
+            // Grid lines
             ctx.strokeStyle = '#8c592b';
             ctx.lineWidth = 1.2;
             for (let i = 0; i < BOARD_SIZE; i++) {
@@ -404,18 +329,17 @@
                 ctx.stroke();
             }
 
-            // Star Points
-            const stars = [3, 7, 11];
+            // Star points
             ctx.fillStyle = '#8c592b';
-            for (let r of stars) {
-                for (let c of stars) {
+            [3, 7, 11].forEach(r => {
+                [3, 7, 11].forEach(c => {
                     ctx.beginPath();
                     ctx.arc(padding + c * cellSize, padding + r * cellSize, 3.5, 0, Math.PI * 2);
                     ctx.fill();
-                }
-            }
+                });
+            });
 
-            // Render Stones
+            // Stones
             for (let r = 0; r < BOARD_SIZE; r++) {
                 for (let c = 0; c < BOARD_SIZE; c++) {
                     const stone = board[r][c];
@@ -426,7 +350,6 @@
 
                         ctx.beginPath();
                         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-
                         const grad = ctx.createRadialGradient(cx - radius*0.3, cy - radius*0.3, radius*0.1, cx, cy, radius);
                         if (stone === 1) {
                             grad.addColorStop(0, '#555');
@@ -437,7 +360,6 @@
                         }
                         ctx.fillStyle = grad;
                         ctx.fill();
-
                         ctx.strokeStyle = stone === 1 ? '#000' : '#aaa';
                         ctx.lineWidth = 1;
                         ctx.stroke();
@@ -445,43 +367,35 @@
                 }
             }
 
-            // Last Move Highlight
+            // Last move marker
             if (lastMove) {
                 const cx = padding + lastMove.c * cellSize;
                 const cy = padding + lastMove.r * cellSize;
                 ctx.beginPath();
-                ctx.arc(cx, cy, cellSize * 0.2, 0, Math.PI * 2);
+                ctx.arc(cx, cy, cellSize * 0.18, 0, Math.PI * 2);
                 ctx.strokeStyle = '#ef4444';
                 ctx.lineWidth = 2.5;
                 ctx.stroke();
             }
 
-            // Secret Helper Badges (ONLY ON PLAYER'S TURN)
-            const myTurnNow = isPracticeMode || (currentTurn === myRole);
-            if (isSecretHelperActive && myTurnNow && top5Analysis.length > 0 && gameStatus === 'playing') {
-                top5Analysis.forEach((item, index) => {
+            // Secret Rainbow AI Badges ①~⑤ (Shown ONLY on user's turn when active)
+            if (isAiActive && currentTurn === myRole && gameStatus === 'playing' && top5Candidates.length > 0) {
+                top5Candidates.forEach((item, index) => {
                     const cx = padding + item.c * cellSize;
                     const cy = padding + item.r * cellSize;
                     const color = RAINBOW_COLORS[index] || '#64748b';
-                    const badgeRadius = cellSize * 0.44;
-
-                    if (index === 0) {
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, badgeRadius * 1.25, 0, Math.PI * 2);
-                        ctx.fillStyle = 'rgba(234, 179, 8, 0.4)';
-                        ctx.fill();
-                    }
+                    const radius = cellSize * 0.42;
 
                     ctx.beginPath();
-                    ctx.arc(cx, cy, badgeRadius, 0, Math.PI * 2);
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
                     ctx.fillStyle = color;
                     ctx.fill();
                     ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = index === 0 ? 2.5 : 1.8;
+                    ctx.lineWidth = 1.8;
                     ctx.stroke();
 
                     ctx.fillStyle = '#ffffff';
-                    ctx.font = 'black 16px Pretendard, sans-serif';
+                    ctx.font = 'bold 15px Pretendard, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText((index + 1).toString(), cx, cy + 0.5);
@@ -490,12 +404,7 @@
         }
 
         canvas.addEventListener('click', (e) => {
-            if (gameStatus !== 'playing') return;
-
-            if (!isPracticeMode && currentTurn !== myRole) {
-                showToast("상대방의 차례입니다!", "error");
-                return;
-            }
+            if (gameStatus !== 'playing' || currentTurn !== myRole) return;
 
             const rect = canvas.getBoundingClientRect();
             const w = rect.width;
@@ -509,43 +418,36 @@
             const row = Math.round((y - padding) / cellSize);
 
             if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE && board[row][col] === 0) {
-                const movePlayer = isPracticeMode ? currentTurn : myRole;
-                board[row][col] = movePlayer;
-                lastMove = { r: row, c: col };
-
-                playStoneSound(movePlayer === 1);
-
-                const isWin = checkFiveInARow(row, col, movePlayer);
-                const nextTurn = currentTurn === 1 ? 2 : 1;
-                currentTurn = isWin ? currentTurn : nextTurn;
-                if (isWin) gameStatus = "finished";
-
-                renderBoard();
-                updateUIHeader();
-
-                if (isWin) {
-                    playWinSound();
-                    const winnerName = movePlayer === 1 ? hostName : guestName;
-                    showToast(`🎉 ${winnerName} 승리!`, "success");
-                }
-
-                if (isSecretHelperActive) runAiAnalysis();
-
-                // Firebase Sync State Update
-                if (!isPracticeMode && roomRef) {
-                    roomRef.update({
-                        board: JSON.stringify(board),
-                        lastMove: lastMove,
-                        currentTurn: currentTurn,
-                        gameStatus: gameStatus,
-                        updatedAt: firebase.database.ServerValue.TIMESTAMP
-                    });
-                }
+                executeMove(row, col, myRole);
+                sendMQTTMessage({ type: 'MOVE', r: row, c: col, color: myRole });
             }
         });
 
+        function executeMove(r, c, color) {
+            board[r][c] = color;
+            lastMove = { r, c };
+            playStoneSound(color === 1);
+
+            const isWin = checkFiveInARow(r, c, color);
+            currentTurn = color === 1 ? 2 : 1;
+
+            if (isWin) {
+                gameStatus = 'finished';
+                playWinSound();
+                const winner = color === myRole ? '나의' : '상대방의';
+                showToast(`🎉 ${winner} 승리!`, 'success');
+            }
+
+            renderBoard();
+            updateTurnUI();
+
+            if (isAiActive && currentTurn === myRole && gameStatus === 'playing') {
+                calculateAI();
+            }
+        }
+
         function checkFiveInARow(r, c, color) {
-            const dirs = [[[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [1, -1]]];
+            const dirs = [[[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]]];
             for (let d of dirs) {
                 let count = 1;
                 for (let step of d) {
@@ -559,101 +461,274 @@
             return false;
         }
 
-        // ====================================================
-        // 8-Algorithm Stealth AI Pattern Engine
-        // ====================================================
-        window.setSecretHelperState = function(enable) {
-            isSecretHelperActive = enable;
-            const secretReportPanel = document.getElementById('secretReportPanel');
+        // --- INSTANT NON-BLOCKING ROOM CREATION & MQTT ---
+        function createRoom() {
+            myNickname = document.getElementById('nickname-input').value.trim() || `방장_${Math.floor(1000 + Math.random()*9000)}`;
+            roomCode = Math.floor(100000 + Math.random() * 900000).toString();
+            isHost = true;
+            myRole = 1; // Black
 
-            if (enable) {
-                if (secretReportPanel) secretReportPanel.classList.remove('hidden');
-                appendLocalSystemMessage("🔒 [시스템] 비밀 헬퍼가 활성화되었습니다.");
-                runAiAnalysis();
-            } else {
-                if (secretReportPanel) secretReportPanel.classList.add('hidden');
-                top5Analysis = [];
-                appendLocalSystemMessage("🔒 [시스템] 비밀 헬퍼가 비활성화되었습니다.");
-                renderBoard();
+            // 1. INSTANT UI UPDATE (0 Seconds delay!)
+            document.getElementById('loading-modal').classList.remove('hidden');
+            document.getElementById('loading-text').innerText = '상대방 접속 대기 중...';
+            document.getElementById('room-code-text').innerText = roomCode;
+            document.getElementById('room-code-display').classList.remove('hidden');
+
+            // 2. Background MQTT Connection
+            initMQTT(roomCode);
+        }
+
+        function joinRoom() {
+            const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+            if (code.length !== 6) return showToast('6자리 방 코드를 정확히 입력하세요.', 'error');
+
+            myNickname = document.getElementById('nickname-input').value.trim() || `손님_${Math.floor(1000 + Math.random()*9000)}`;
+            roomCode = code;
+            isHost = false;
+            myRole = 2; // White
+
+            document.getElementById('loading-modal').classList.remove('hidden');
+            document.getElementById('loading-text').innerText = '방에 접속 중...';
+            document.getElementById('room-code-display').classList.add('hidden');
+
+            initMQTT(roomCode, () => {
+                sendMQTTMessage({ type: 'JOIN', nickname: myNickname });
+            });
+        }
+
+        function initMQTT(code, onConnectCb = null) {
+            if (mqttClient) {
+                try { mqttClient.end(); } catch(e) {}
             }
 
-            setTimeout(() => { setupCanvas(); renderBoard(); }, 50);
-        };
+            const primaryBroker = 'wss://broker.emqx.io:8084/mqtt';
+            const fallbackBroker = 'wss://broker.hivemq.com:8884/mqtt';
 
-        function runAiAnalysis() {
-            if (!isSecretHelperActive) return;
+            const connectOptions = {
+                clientId: 'omok_v5_' + Math.random().toString(16).substring(2, 10),
+                clean: true,
+                connectTimeout: 5000,
+                reconnectPeriod: 2000
+            };
 
-            const myTurnNow = isPracticeMode || (currentTurn === myRole);
-            const listContainer = document.getElementById('secretReportList');
+            mqttClient = mqtt.connect(primaryBroker, connectOptions);
 
-            if (!myTurnNow || gameStatus !== 'playing') {
-                top5Analysis = [];
-                if (listContainer) {
-                    listContainer.innerHTML = `
-                        <div class="flex flex-col items-center justify-center py-10 px-2 gap-3 text-center text-slate-400">
-                            <div class="w-10 h-10 rounded-full bg-slate-900 border border-indigo-500/30 flex items-center justify-center text-lg shadow-inner">
-                                <span class="animate-pulse">⏳</span>
-                            </div>
-                            <div class="flex flex-col gap-1">
-                                <span class="text-xs font-extrabold text-indigo-300">상대방 차례 진행 중</span>
-                                <span class="text-[10px] text-slate-400 leading-relaxed">상대방이 착수하면 내 차례에 1~5위 추천 수가 다시 실시간 표기됩니다.</span>
-                            </div>
-                        </div>
-                    `;
+            let fallbackAttempted = false;
+            mqttClient.on('error', () => {
+                if (!fallbackAttempted) {
+                    fallbackAttempted = true;
+                    mqttClient = mqtt.connect(fallbackBroker, connectOptions);
+                    bindMQTTEvents(code, onConnectCb);
                 }
+            });
+
+            bindMQTTEvents(code, onConnectCb);
+        }
+
+        function bindMQTTEvents(code, onConnectCb) {
+            const topic = `omok/v5/${code}`;
+
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(topic, { qos: 1 });
+                if (onConnectCb) onConnectCb();
+            });
+
+            mqttClient.on('message', (t, message) => {
+                try {
+                    const data = JSON.parse(message.toString());
+                    handleMQTTData(data);
+                } catch(e) {}
+            });
+        }
+
+        function sendMQTTMessage(payload) {
+            if (mqttClient && roomCode) {
+                mqttClient.publish(`omok/v5/${roomCode}`, JSON.stringify(payload), { qos: 1 });
+            }
+        }
+
+        function handleMQTTData(data) {
+            if (data.type === 'JOIN' && isHost) {
+                opponentNickname = data.nickname;
+                sendMQTTMessage({ type: 'JOIN_ACK', nickname: myNickname });
+                startMatch();
+            } else if (data.type === 'JOIN_ACK' && !isHost) {
+                opponentNickname = data.nickname;
+                startMatch();
+            } else if (data.type === 'MOVE') {
+                if (data.color !== myRole) {
+                    executeMove(data.r, data.c, data.color);
+                }
+            } else if (data.type === 'RESET_REQ') {
+                document.getElementById('resetModal').classList.remove('hidden');
+            } else if (data.type === 'RESET_ACK') {
+                if (data.accept) {
+                    resetBoardState();
+                    showToast('상대방이 리셋을 승인했습니다.', 'success');
+                } else {
+                    showToast('상대방이 리셋을 거절했습니다.', 'error');
+                }
+            } else if (data.type === 'CHAT') {
+                if (data.sender !== myNickname) {
+                    appendChatMessage(data.sender, data.message);
+                }
+            }
+        }
+
+        function startMatch() {
+            gameStatus = 'playing';
+            document.getElementById('loading-modal').classList.add('hidden');
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+
+            document.getElementById('activeRoomCode').innerText = roomCode;
+            document.getElementById('blackPlayerName').innerText = isHost ? `${myNickname} (나)` : opponentNickname;
+            document.getElementById('whitePlayerName').innerText = !isHost ? `${myNickname} (나)` : opponentNickname;
+
+            resetBoardState();
+            appendChatMessage('시스템', `대국이 시작되었습니다! (${myNickname} vs ${opponentNickname})`);
+        }
+
+        function cancelConnection() {
+            if (mqttClient) try { mqttClient.end(); } catch(e) {}
+            document.getElementById('loading-modal').classList.add('hidden');
+        }
+
+        function leaveRoom() {
+            cancelConnection();
+            gameStatus = 'lobby';
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('lobby-screen').classList.remove('hidden');
+        }
+
+        function resetBoardState() {
+            board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+            lastMove = null;
+            currentTurn = 1;
+            gameStatus = 'playing';
+            renderBoard();
+            updateTurnUI();
+            if (isAiActive && currentTurn === myRole) calculateAI();
+        }
+
+        function requestReset() {
+            sendMQTTMessage({ type: 'RESET_REQ' });
+            showToast('상대방에게 판 리셋을 요청했습니다.');
+        }
+
+        function respondReset(accept) {
+            document.getElementById('resetModal').classList.add('hidden');
+            sendMQTTMessage({ type: 'RESET_ACK', accept });
+            if (accept) resetBoardState();
+        }
+
+        function updateTurnUI() {
+            const indicator = document.getElementById('turnIndicator');
+            const isMyTurn = currentTurn === myRole;
+
+            if (gameStatus === 'finished') {
+                indicator.innerText = '대국 종료';
+                indicator.className = 'px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-extrabold';
+            } else if (isMyTurn) {
+                indicator.innerText = '내 차례입니다!';
+                indicator.className = 'px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-extrabold shadow animate-bounce';
+            } else {
+                indicator.innerText = '상대방 생각 중...';
+                indicator.className = 'px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-extrabold';
+            }
+        }
+
+        // --- CHAT & STEALTH SECRET COMMANDS ---
+        function handleSendChat(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            // Secret Command Detection
+            if (msg === '/힌트' || msg === '/분석') {
+                isAiActive = true;
+                document.getElementById('ai-report-card').classList.remove('hidden');
+                appendChatMessage('시스템', '비밀 AI 힌트가 활성화되었습니다.');
+                if (currentTurn === myRole && gameStatus === 'playing') calculateAI();
+                input.value = '';
+                return;
+            } else if (msg === '/off') {
+                isAiActive = false;
+                document.getElementById('ai-report-card').classList.add('hidden');
+                top5Candidates = [];
                 renderBoard();
+                appendChatMessage('시스템', '비밀 AI 힌트가 비활성화되었습니다.');
+                input.value = '';
                 return;
             }
 
-            const candidates = [];
-            const activeColor = isPracticeMode ? currentTurn : (currentTurn || 1);
-            const opponentColor = activeColor === 1 ? 2 : 1;
+            appendChatMessage(myNickname, msg);
+            sendMQTTMessage({ type: 'CHAT', sender: myNickname, message: msg });
+            input.value = '';
+        }
 
-            const scanned = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
-            let hasStone = false;
+        function appendChatMessage(sender, message) {
+            const box = document.getElementById('chat-messages');
+            const isMe = sender === myNickname;
+            const div = document.createElement('div');
+            div.className = sender === '시스템' ? 'text-center my-1 text-indigo-300 font-semibold text-[11px]' : isMe ? 'flex flex-col items-end' : 'flex flex-col items-start';
+
+            if (sender !== '시스템') {
+                div.innerHTML = `
+                    <span class="text-[10px] text-slate-400 px-1 mb-0.5">${sender}</span>
+                    <div class="${isMe ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200 border border-slate-700'} px-3 py-1.5 rounded-2xl max-w-[85%] break-all shadow">
+                        ${message}
+                    </div>
+                `;
+            } else {
+                div.innerText = message;
+            }
+
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // --- 8 ALGORITHMS AI EVALUATION ENGINE ---
+        function calculateAI() {
+            const candidates = [];
+            const myColorVal = myRole;
+            const enemyColorVal = myRole === 1 ? 2 : 1;
 
             for (let r = 0; r < BOARD_SIZE; r++) {
                 for (let c = 0; c < BOARD_SIZE; c++) {
-                    if (board[r][c] !== 0) {
-                        hasStone = true;
-                        for (let dr = -2; dr <= 2; dr++) {
-                            for (let dc = -2; dc <= 2; dc++) {
-                                const nr = r + dr, nc = c + dc;
-                                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-                                    if (board[nr][nc] === 0 && !scanned[nr][nc]) {
-                                        scanned[nr][nc] = true;
-                                        candidates.push({ r: nr, c: nc });
-                                    }
-                                }
-                            }
+                    if (board[r][c] === 0) {
+                        const scoreAtk = evaluateCell(r, c, myColorVal);
+                        const scoreDef = evaluateCell(r, c, enemyColorVal);
+                        const totalScore = scoreAtk.score + scoreDef.score * 0.95;
+
+                        if (totalScore > 0) {
+                            candidates.push({ r, c, score: totalScore, tag: scoreAtk.tag || scoreDef.tag || '요충지 포석' });
                         }
                     }
                 }
             }
 
-            if (!hasStone) candidates.push({ r: 7, c: 7 });
+            candidates.sort((a, b) => b.score - a.score);
+            top5Candidates = candidates.slice(0, 5);
 
-            const scoredMoves = candidates.map(pos => {
-                const atkRes = evaluatePositionDetail(pos.r, pos.c, activeColor);
-                const defRes = evaluatePositionDetail(pos.r, pos.c, opponentColor);
-                let totalScore = atkRes.score + defRes.score * 0.95;
+            if (top5Candidates.length > 0) {
+                const colNames = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
+                const best = top5Candidates[0];
+                document.getElementById('report-best-move').innerText = `${colNames[best.c]}${15 - best.r}`;
+                
+                let winRate = Math.round(100 / (1 + Math.exp(-best.score / 2500)));
+                winRate = Math.min(Math.max(winRate, 8), 98);
+                document.getElementById('report-win-rate').innerText = `${winRate}%`;
+                document.getElementById('report-pattern').innerText = best.tag;
+            }
 
-                let winRate = Math.round(100 / (1 + Math.exp(-totalScore / 3000)));
-                winRate = Math.min(Math.max(winRate, 5), 98);
-                if (totalScore >= 50000) winRate = 99;
-
-                return { r: pos.r, c: pos.c, score: totalScore, winRate, patternTag: atkRes.tag || defRes.tag || "요충지 포석" };
-            });
-
-            scoredMoves.sort((a, b) => b.score - a.score);
-            top5Analysis = scoredMoves.slice(0, 5);
-            renderSecretReportList();
             renderBoard();
         }
 
-        function evaluatePositionDetail(r, c, color) {
+        function evaluateCell(r, c, color) {
             board[r][c] = color;
-            let score = 0, tag = "";
+            let score = 0, tag = '';
             const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
 
             for (let d of dirs) {
@@ -671,395 +746,29 @@
                 }
                 if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) openEnds++;
 
-                if (count >= 5) { score += 100000; tag = "5목 외통수"; }
-                else if (count === 4 && openEnds === 2) { score += 25000; tag = "열린 4 공격"; }
-                else if (count === 4 && openEnds === 1) { score += 6000; tag = "외길 4 수비"; }
-                else if (count === 3 && openEnds === 2) { score += 4500; tag = "열린 3 형성"; }
-                else if (count === 3 && openEnds === 1) { score += 1000; tag = "3목 형성"; }
-                else if (count === 2 && openEnds === 2) { score += 400; tag = "포석 확장"; }
+                if (count >= 5) { score += 100000; tag = '5목 완성'; }
+                else if (count === 4 && openEnds === 2) { score += 20000; tag = '열린 4 공격'; }
+                else if (count === 4 && openEnds === 1) { score += 5000; tag = '4목 형성'; }
+                else if (count === 3 && openEnds === 2) { score += 3500; tag = '열린 3 공격'; }
+                else if (count === 3 && openEnds === 1) { score += 800; tag = '3목 형성'; }
             }
 
             board[r][c] = 0;
             return { score, tag };
         }
 
-        function renderSecretReportList() {
-            const listContainer = document.getElementById('secretReportList');
-            if (!listContainer) return;
-            const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O'];
-
-            let html = '';
-            top5Analysis.forEach((item, idx) => {
-                const coordStr = `${colLetters[item.c]}${15 - item.r}`;
-                const isBest = idx === 0;
-                const rainbowHex = RAINBOW_COLORS[idx] || '#64748b';
-
-                html += `
-                    <div class="flex flex-col gap-1.5 ${isBest ? 'bg-indigo-950/90 border-indigo-500 shadow-lg' : 'bg-slate-900/90 border-slate-800'} p-2.5 rounded-xl border transition-all">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black text-white shadow-md" style="background-color: ${rainbowHex};">${idx + 1}</span>
-                                <span class="text-xs font-black text-white font-mono">${coordStr}</span>
-                            </div>
-                            <span class="text-[10px] font-bold text-indigo-200 bg-indigo-900/60 px-2 py-0.5 rounded-full border border-indigo-700/50">${item.patternTag}</span>
-                        </div>
-                        <div class="flex items-center justify-between gap-2 mt-0.5">
-                            <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                                <div class="h-full rounded-full transition-all duration-300" style="width: ${item.winRate}%; background-color: ${rainbowHex};"></div>
-                            </div>
-                            <span class="text-xs font-black font-mono text-slate-100">${item.winRate}%</span>
-                        </div>
-                    </div>
-                `;
-            });
-            listContainer.innerHTML = html;
+        function openLobbyScreen() {
+            leaveRoom();
         }
 
-        // ====================================================
-        // Firebase Realtime DB Sync & Room Operations
-        // ====================================================
-        window.openLobbyModal = function() { document.getElementById('lobbyModal').classList.remove('hidden'); };
-
-        function detachFirebaseListeners() {
-            if (roomRef) {
-                roomRef.off();
-                roomRef = null;
-            }
-        }
-
-        window.createOnlineRoom = function() {
-            const createBtn = document.getElementById('createRoomBtn');
-            createBtn.disabled = true; createBtn.innerText = "방 생성 중...";
-
-            const nick = getPlayerNickname('방장');
-            const roomCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-            currentRoomId = roomCode;
-            isPracticeMode = false;
-            myRole = 1; // Host = Black
-            hostName = nick;
-            guestName = "상대방 대기 중...";
-            gameStatus = "waiting";
-            currentTurn = 1;
-            board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
-            lastMove = null;
-
-            detachFirebaseListeners();
-            roomRef = db.ref('rooms/' + roomCode);
-
-            const initialRoomData = {
-                hostName: hostName,
-                guestName: guestName,
-                gameStatus: "waiting",
-                currentTurn: 1,
-                board: JSON.stringify(board),
-                lastMove: null,
-                resetState: null,
-                chat: [],
-                createdAt: firebase.database.ServerValue.TIMESTAMP
-            };
-
-            roomRef.set(initialRoomData).then(() => {
-                listenToRoomUpdates();
-                document.getElementById('lobbyModal').classList.add('hidden');
-                document.getElementById('currentRoomCode').innerText = roomCode;
-                document.getElementById('playerBlackName').innerText = `${hostName} (나)`;
-                document.getElementById('playerWhiteName').innerText = guestName;
-                document.getElementById('chatConnectionBadge').innerText = "Firebase 구글 서버 연결";
-
-                updateUIHeader(); renderBoard();
-                showToast(`방 생성 완료! 방 코드: ${roomCode}`, "success");
-                createBtn.disabled = false; createBtn.innerHTML = "<span>➕</span> 새로운 1:1 방 만들기";
-            }).catch(err => {
-                showToast("방 생성 중 오류가 발생했습니다.", "error");
-                createBtn.disabled = false; createBtn.innerHTML = "<span>➕</span> 새로운 1:1 방 만들기";
-            });
-        };
-
-        window.joinOnlineRoom = function() {
-            const joinBtn = document.getElementById('joinRoomBtn');
-            const roomCode = document.getElementById('joinCodeInput').value.trim().toUpperCase();
-
-            if (roomCode.length !== 6) return showToast("6자리 방 코드를 입력해 주세요.", "error");
-
-            joinBtn.disabled = true; joinBtn.innerText = "연결 중...";
-            const nick = getPlayerNickname('도전자');
-
-            detachFirebaseListeners();
-            const targetRef = db.ref('rooms/' + roomCode);
-
-            targetRef.once('value').then(snapshot => {
-                if (!snapshot.exists()) {
-                    showToast("존재하지 않는 방 코드입니다.", "error");
-                    joinBtn.disabled = false; joinBtn.innerText = "입장하기";
-                    return;
-                }
-
-                currentRoomId = roomCode;
-                isPracticeMode = false;
-                myRole = 2; // Guest = White
-                guestName = nick;
-                roomRef = targetRef;
-
-                roomRef.update({
-                    guestName: guestName,
-                    gameStatus: "playing"
-                }).then(() => {
-                    listenToRoomUpdates();
-                    document.getElementById('lobbyModal').classList.add('hidden');
-                    document.getElementById('currentRoomCode').innerText = roomCode;
-                    document.getElementById('chatConnectionBadge').innerText = "Firebase 구글 서버 연결";
-
-                    showToast("대국실에 참가하였습니다!", "success");
-                    joinBtn.disabled = false; joinBtn.innerText = "입장하기";
-                });
-            }).catch(err => {
-                showToast("서버 연결 실패", "error");
-                joinBtn.disabled = false; joinBtn.innerText = "입장하기";
-            });
-        };
-
-        function listenToRoomUpdates() {
-            if (!roomRef) return;
-
-            roomRef.on('value', snapshot => {
-                const data = snapshot.val();
-                if (!data) return;
-
-                hostName = data.hostName || hostName;
-                guestName = data.guestName || guestName;
-                gameStatus = data.gameStatus || "waiting";
-                currentTurn = data.currentTurn || 1;
-                
-                if (data.board) {
-                    try { board = JSON.parse(data.board); } catch (e) {}
-                }
-                lastMove = data.lastMove || null;
-
-                // Sync Player Card Text
-                if (myRole === 1) {
-                    document.getElementById('playerBlackName').innerText = `${hostName} (나)`;
-                    document.getElementById('playerWhiteName').innerText = guestName;
-                } else {
-                    document.getElementById('playerBlackName').innerText = hostName;
-                    document.getElementById('playerWhiteName').innerText = `${guestName} (나)`;
-                }
-
-                // Handle Reset Request State
-                if (data.resetState) {
-                    if (data.resetState.status === 'pending' && data.resetState.requestedBy !== myRole) {
-                        document.getElementById('resetConfirmModal').classList.remove('hidden');
-                    } else if (data.resetState.status === 'accepted') {
-                        document.getElementById('resetWaitingModal').classList.add('hidden');
-                        document.getElementById('resetConfirmModal').classList.add('hidden');
-                        executeBoardReset(false);
-                    } else if (data.resetState.status === 'declined') {
-                        document.getElementById('resetWaitingModal').classList.add('hidden');
-                        document.getElementById('resetConfirmModal').classList.add('hidden');
-                        showToast("상대방이 리셋 요청을 거절했습니다.", "error");
-                    }
-                }
-
-                // Sync Chat Messages
-                if (data.chat) {
-                    syncChatFeed(data.chat);
-                }
-
-                updateUIHeader();
-                renderBoard();
-                if (isSecretHelperActive) runAiAnalysis();
-            });
-        }
-
-        window.startSinglePractice = function() {
-            detachFirebaseListeners();
-            isPracticeMode = true; currentRoomId = "PRACTICE"; myRole = 1;
-            board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
-            lastMove = null; gameStatus = "playing"; currentTurn = 1;
-
-            document.getElementById('lobbyModal').classList.add('hidden');
-            document.getElementById('currentRoomCode').innerText = "PRACTICE";
-            document.getElementById('playerBlackName').innerText = "나 (흑돌)";
-            document.getElementById('playerWhiteName').innerText = "상대방 (백돌)";
-            document.getElementById('chatConnectionBadge').innerText = "로컬 모드";
-            
-            showToast("로컬 연습 모드가 시작되었습니다.", "info");
-            updateUIHeader(); renderBoard();
-            if (isSecretHelperActive) runAiAnalysis();
-        };
-
-        function updateUIHeader() {
-            const statusText = document.getElementById('roomStatusText');
-            const turnBadge = document.getElementById('turnBadge');
-
-            if (isPracticeMode) {
-                statusText.innerText = "상태: 로컬 연습 모드";
-                turnBadge.innerText = currentTurn === 1 ? "흑돌 차례" : "백돌 차례";
-                turnBadge.className = "text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-amber-600 text-white shadow-lg";
-                return;
-            }
-
-            statusText.innerText = `온라인 대국실 (${currentRoomId})`;
-
-            if (gameStatus === 'waiting') {
-                turnBadge.innerText = "상대방 대기 중...";
-                turnBadge.className = "text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-amber-600 text-white animate-pulse";
-            } else if (gameStatus === 'playing') {
-                const isMyTurn = currentTurn === myRole;
-                turnBadge.innerText = isMyTurn ? "내 차례입니다!" : "상대방 생각 중...";
-                turnBadge.className = isMyTurn ? "text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-emerald-600 text-white shadow-lg animate-bounce" : "text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-slate-800 text-slate-400";
-            } else if (gameStatus === 'finished') {
-                turnBadge.innerText = "대국 종료";
-                turnBadge.className = "text-xs font-extrabold px-3.5 py-1.5 rounded-full bg-rose-600 text-white";
-            }
-        }
-
-        function executeBoardReset(updateFirebase = true) {
-            board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
-            lastMove = null; gameStatus = "playing"; currentTurn = 1;
-            renderBoard(); updateUIHeader();
-            if (isSecretHelperActive) runAiAnalysis();
-
-            if (updateFirebase && roomRef && !isPracticeMode) {
-                roomRef.update({
-                    board: JSON.stringify(board),
-                    lastMove: null,
-                    currentTurn: 1,
-                    gameStatus: "playing",
-                    resetState: null
-                });
-            }
-        }
-
-        window.requestRematch = function() {
-            if (isPracticeMode) { executeBoardReset(false); showToast("연습 판이 리셋되었습니다.", "info"); return; }
-            if (!roomRef) return;
-
-            roomRef.update({
-                resetState: { requestedBy: myRole, status: 'pending' }
-            });
-            document.getElementById('resetWaitingModal').classList.remove('hidden');
-        };
-
-        window.acceptResetRequest = function() {
-            document.getElementById('resetConfirmModal').classList.add('hidden');
-            executeBoardReset(true);
-            showToast("리셋 요청을 승인했습니다.", "success");
-        };
-
-        window.declineResetRequest = function() {
-            document.getElementById('resetConfirmModal').classList.add('hidden');
-            if (roomRef) {
-                roomRef.update({ resetState: { requestedBy: myRole, status: 'declined' } });
-            }
-            showToast("리셋 요청을 거절했습니다.", "info");
-        };
-
-        window.cancelResetRequest = function() {
-            document.getElementById('resetWaitingModal').classList.add('hidden');
-            if (roomRef) {
-                roomRef.update({ resetState: null });
-            }
-            showToast("리셋 요청을 취소했습니다.", "info");
-        };
-
-        window.leaveRoom = function() { 
-            detachFirebaseListeners(); 
-            isPracticeMode = true; 
-            openLobbyModal(); 
-        };
-
-        window.copyRoomCode = function() {
-            if (!currentRoomId) return;
-            const tempInput = document.createElement("input");
-            tempInput.value = currentRoomId;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand("copy");
-            document.body.removeChild(tempInput);
-            showToast("방 코드가 복사되었습니다!", "info");
-        };
-
-        // Chat & Secret Commands System
-        let lastSyncedChatCount = 0;
-        function syncChatFeed(chatList) {
-            if (!Array.isArray(chatList)) return;
-            const chatBox = document.getElementById('chatBox');
-            if (chatList.length === lastSyncedChatCount) return;
-
-            chatBox.innerHTML = `
-                <div class="text-center text-[11px] text-slate-500 py-4">
-                    상대방과 대화를 주고받을 수 있습니다.<br>
-                    승패에 연연하지 말고 매너 있는 대국을 진행해 주세요.
-                </div>
-            `;
-
-            chatList.forEach(msg => {
-                const isMe = msg.sender === (myRole === 1 ? hostName : guestName);
-                const msgDiv = document.createElement('div');
-                msgDiv.className = isMe ? "flex flex-col items-end" : "flex flex-col items-start";
-                msgDiv.innerHTML = `
-                    <span class="text-[10px] text-slate-400 px-1 mb-0.5">${msg.sender}</span>
-                    <div class="${isMe ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-100 border border-slate-700'} px-3 py-1.5 rounded-2xl text-xs max-w-[80%] break-all shadow">
-                        ${msg.text}
-                    </div>
-                `;
-                chatBox.appendChild(msgDiv);
-            });
-            chatBox.scrollTop = chatBox.scrollHeight;
-            lastSyncedChatCount = chatList.length;
-        }
-
-        function appendLocalSystemMessage(msgText) {
-            const chatBox = document.getElementById('chatBox');
-            if (!chatBox) return;
-            const sysDiv = document.createElement('div');
-            sysDiv.className = "flex justify-center my-1.5";
-            sysDiv.innerHTML = `<div class="bg-indigo-950/90 border border-indigo-500/40 text-indigo-200 px-3 py-1.5 rounded-xl text-[11px] font-semibold text-center shadow-md backdrop-blur">${msgText}</div>`;
-            chatBox.appendChild(sysDiv); chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        window.handleSendChat = function(e) {
-            e.preventDefault();
-            const input = document.getElementById('chatInput');
-            const text = input.value.trim();
-            if (!text) return;
-
-            const lowerText = text.toLowerCase();
-            if (['/힌트', '/helper', '/분석', '/hint', '/h'].includes(lowerText)) {
-                input.value = ''; setSecretHelperState(true); return;
-            } else if (['/off', '/끄기'].includes(lowerText)) {
-                input.value = ''; setSecretHelperState(false); return;
-            } else if (text.startsWith('/')) {
-                input.value = '';
-                appendLocalSystemMessage("⚠️ [시스템] 알 수 없는 명령어입니다. (/힌트, /분석, /off 사용 가능)");
-                return;
-            }
-
-            input.value = '';
-
-            const myNick = myRole === 1 ? hostName : guestName;
-
-            if (!isPracticeMode && roomRef) {
-                roomRef.child('chat').once('value').then(snapshot => {
-                    const currentChat = snapshot.val() || [];
-                    currentChat.push({ sender: myNick, text: text, time: Date.now() });
-                    roomRef.update({ chat: currentChat });
-                });
-            } else {
-                const chatBox = document.getElementById('chatBox');
-                const msgDiv = document.createElement('div');
-                msgDiv.className = "flex flex-col items-end";
-                msgDiv.innerHTML = `<span class="text-[10px] text-slate-400 px-1 mb-0.5">${myNick}</span><div class="bg-amber-600 text-white px-3 py-1.5 rounded-2xl text-xs max-w-[80%] break-all shadow">${text}</div>`;
-                chatBox.appendChild(msgDiv); chatBox.scrollTop = chatBox.scrollHeight;
-            }
-        };
-
-        window.sendQuickEmoji = function(emoji) {
-            const input = document.getElementById('chatInput');
-            input.value = emoji;
-            document.getElementById('chatForm').dispatchEvent(new Event('submit'));
-        };
+        window.addEventListener('load', () => {
+            setupCanvas();
+            renderBoard();
+        });
+        window.addEventListener('resize', () => {
+            setupCanvas();
+            renderBoard();
+        });
     </script>
 </body>
 </html>
